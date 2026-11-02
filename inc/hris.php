@@ -24,7 +24,7 @@ function hris_modules()
         'home'     => ['Beranda', 'home', ['home' => 'Beranda']],
         'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan']],
         'time'     => ['Manajemen Waktu', 'clock', ['attendance' => 'Kehadiran', 'timeoff' => 'Cuti & Izin', 'balance' => 'Saldo cuti']],
-        'report'   => ['Laporan', 'report', 'report.php'],
+        'report'   => ['Laporan', 'report', ['reports' => 'Semua laporan']],
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];
 }

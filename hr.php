@@ -27,6 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $m = get('m', 'home');
+if ($m === 'report') require __DIR__ . '/inc/reports.php';   // before any output: ?csv=1 downloads and exits
 $today = date('Y-m-d');
 $back = h($_SERVER['REQUEST_URI']);
 $csrf = csrf_field();
@@ -295,6 +296,83 @@ elseif ($m === 'balance'):
         <td class="num"><?php if ($quota !== null): $rem = $quota - $taken; ?><span class="pill <?= $rem < 0 ? 'bad' : ($rem <= 2 ? 'warn' : 'ok') ?>"><?= $rem ?></span><?php endif; ?></td></tr>
     <?php endforeach; ?>
     </tbody></table></div></div>
+<?php
+// ======================================================================= Laporan (hub)
+elseif ($m === 'reports'):
+    $groups = [
+        'Kehadiran' => [
+            'rekap' => ['Ringkasan kehadiran', 'Hari kerja, hadir, terlambat, pulang awal, lembur dan tidak hadir per karyawan untuk satu periode.'],
+            'harian' => ['Detail kehadiran', 'Jam masuk dan pulang setiap karyawan setiap hari, dengan terlambat, pulang awal dan lembur.'],
+            'kartushift' => ['Kartu shift', 'Satu baris per karyawan, jam masuk / pulang per tanggal dalam periode.'],
+            'scanlog' => ['Log kehadiran', 'Semua scan dari mesin dan input manual, per jam.'],
+            'terlambat' => ['Keterlambatan', 'Berapa kali dan berapa lama tiap karyawan datang terlambat.'],
+            'pulang' => ['Pulang awal', 'Berapa kali dan berapa lama tiap karyawan pulang sebelum jam pulang.'],
+            'lembur' => ['Lembur', 'Lembur setelah jam pulang per karyawan, rekap atau per hari.'],
+            'scan1x' => ['Scan tidak lengkap', 'Hari dengan hanya satu scan (lupa scan masuk atau pulang).'],
+            'luar' => ['Masuk di hari libur', 'Scan pada hari libur atau di luar jadwal.'],
+            'tahunan' => ['Rekap tahunan', 'Hadir, terlambat, tidak hadir dan cuti per bulan dalam satu tahun.'],
+        ],
+        'Cuti & Izin' => [
+            'izin' => ['Cuti & izin', 'Semua cuti dan izin dalam periode, dengan status persetujuan.'],
+            'saldo' => ['Saldo cuti', 'Jatah, diambil, menunggu dan sisa cuti tahun ini per karyawan.'],
+            'cutin' => ['Cuti normatif', 'Cuti normatif (menikah, melahirkan, dll.) dalam periode.'],
+            'cutip' => ['Cuti pribadi', 'Cuti tahunan yang diambil dalam periode.'],
+        ],
+        'Karyawan' => [
+            'karyawan' => ['Data karyawan', 'Data pribadi dan pekerjaan semua karyawan, termasuk masa kerja.'],
+        ],
+    ];
+    hris_header('Laporan', 'report', 'reports', '', '<a class="btn" href="report.php">Laporan gaya Fingerspot</a>'); ?>
+  <?php foreach ($groups as $gname => $items): ?>
+    <div class="card"><h2><?= h($gname) ?></h2>
+      <div class="list"><?php foreach ($items as $k => $it): ?>
+        <a class="li" href="hr.php?m=report&tab=<?= $k ?>" style="color:inherit;text-decoration:none"><?= hris_icon('report') ?>
+          <div class="meta"><b style="color:var(--primary)"><?= h($it[0]) ?></b><small><?= h($it[1]) ?></small></div><?= hris_icon('chev') ?></a>
+      <?php endforeach; ?></div></div>
+  <?php endforeach; ?>
+<?php
+// ======================================================================= Laporan (one report)
+elseif ($m === 'report'):
+    $titles = ['rekap' => 'Ringkasan kehadiran', 'harian' => 'Detail kehadiran', 'kartushift' => 'Kartu shift', 'scanlog' => 'Log kehadiran', 'terlambat' => 'Keterlambatan',
+               'pulang' => 'Pulang awal', 'lembur' => 'Lembur', 'scan1x' => 'Scan tidak lengkap', 'luar' => 'Masuk di hari libur', 'tahunan' => 'Rekap tahunan',
+               'izin' => 'Cuti & izin', 'saldo' => 'Saldo cuti', 'cutin' => 'Cuti normatif', 'cutip' => 'Cuti pribadi', 'karyawan' => 'Data karyawan', 'kartu' => 'Kartu scanlog'];
+    $q = ['m' => 'report', 'tab' => $tab, 'from' => $from, 'to' => $to, 'pegawai_id' => $pid, 'dept' => $dept, 'sort' => $sort, 'jenis' => $jenis, 'min' => $minDur, 'year' => $year];
+    $perPage = 200;
+    $page = max(1, (int)get('page', 1));
+    $shown = array_slice($data, ($page - 1) * $perPage, $perPage);
+    $noDates = in_array($tab, ['saldo', 'karyawan'], true);
+    hris_header(isset($titles[$tab]) ? $titles[$tab] : $tab, 'report', 'reports', '<a href="hr.php?m=reports">Laporan</a>',
+        '<a class="btn primary" href="hr.php?' . h(http_build_query($q + ['csv' => 1])) . '">Unduh (Excel / CSV)</a> <button class="btn" onclick="window.print()">Cetak</button>'); ?>
+  <form class="toolbar" method="get">
+    <input type="hidden" name="m" value="report"><input type="hidden" name="tab" value="<?= h($tab) ?>">
+    <?php if ($tab === 'tahunan'): ?><input type="number" name="year" value="<?= $year ?>" style="width:90px">
+    <?php elseif (!$noDates): ?><input type="date" name="from" value="<?= h($from) ?>"> s/d <input type="date" name="to" value="<?= h($to) ?>"><?php endif; ?>
+    <select name="pegawai_id"><option value="">Semua karyawan</option><?php foreach (employees(true) as $e): ?><option value="<?= (int)$e['pegawai_id'] ?>" <?= (string)$pid === (string)$e['pegawai_id'] ? 'selected' : '' ?>><?= h($e['pegawai_nama']) ?></option><?php endforeach; ?></select>
+    <select name="dept"><option value="">Semua departemen</option><?php foreach (lookup('pembagian2') as $k => $v): ?><option value="<?= h($k) ?>" <?= (string)$dept === (string)$k ? 'selected' : '' ?>><?= h($v) ?></option><?php endforeach; ?></select>
+    <?php if (in_array($tab, ['terlambat', 'pulang', 'lembur'], true)): ?>
+      <select name="jenis"><option value="rekap" <?= $jenis === 'rekap' ? 'selected' : '' ?>>Rekap</option><option value="detail" <?= $jenis === 'detail' ? 'selected' : '' ?>>Detail</option></select>
+      <span class="muted">min.</span><input type="number" name="min" min="1" value="<?= $minDur ?>" style="width:70px"><span class="muted">menit</span>
+    <?php endif; ?>
+    <button class="btn">Tampilkan</button>
+    <span class="grow"></span><span class="muted"><?= $noDates ? '' : h(fmt_date($from)) . ' – ' . h(fmt_date($to)) . ' · ' ?><?= number_format(count($data)) ?> baris</span>
+  </form>
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead>
+      <?php if ($groups): ?><tr><?php foreach ($groups as $g): ?><th colspan="<?= (int)$g[1] ?>" style="text-align:center;border-left:1px solid var(--line)"><?= h($g[0]) ?></th><?php endforeach; ?></tr><?php endif; ?>
+      <tr><?php foreach ($headers as $i => $hd): ?><th style="<?= in_array($i, $groupStart, true) ? 'border-left:1px solid var(--line)' : '' ?>"><?= h($hd) ?></th><?php endforeach; ?></tr>
+    </thead><tbody>
+    <?php foreach ($shown as $row): ?><tr><?php foreach ($row as $i => $cell): $gl = in_array($i, $groupStart, true) ? 'border-left:1px solid var(--line);' : ''; ?>
+      <?php if (is_array($cell) && isset($cell['miss'])): ?><td style="<?= $gl ?>background:var(--bad-soft)"></td>
+      <?php elseif (is_array($cell)): ?><td style="<?= $gl ?>"><?= status_badge($cell['status']) ?></td>
+      <?php else: ?><td style="<?= $gl ?>" class="<?= in_array($headers[$i], ['Terlambat', 'Pulang awal'], true) && $cell !== '' ? 'red' : '' ?>"><?= h($cell) ?></td><?php endif; ?>
+    <?php endforeach; ?></tr><?php endforeach; ?>
+    </tbody></table></div>
+    <?php if (!$data): ?><div class="empty"><strong>Tidak ada data</strong>Ubah periode atau filter.</div><?php endif; ?>
+    <?php if (count($data) > $perPage): ?><div class="pager"><span class="grow"></span>
+      <?php if ($page > 1): ?><a class="btn small" href="hr.php?<?= h(http_build_query($q + ['page' => $page - 1])) ?>">‹</a><?php endif; ?>
+      <span><?= $page ?> / <?= (int)ceil(count($data) / $perPage) ?></span>
+      <?php if ($page * $perPage < count($data)): ?><a class="btn small" href="hr.php?<?= h(http_build_query($q + ['page' => $page + 1])) ?>">›</a><?php endif; ?></div><?php endif; ?>
+  </div>
 <?php
 else:
     redirect('hr.php');
