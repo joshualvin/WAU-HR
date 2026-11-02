@@ -7,8 +7,11 @@
 // shortcut: no 20% surcharge for employees without NPWP/NIK and no annualisation for mid-year joiners/leavers;
 // add them if the company needs them.
 
+require_once __DIR__ . '/claims.php';
+
 function ensure_payroll_tables()
 {
+    ensure_claim_tables();
     db()->exec("CREATE TABLE IF NOT EXISTS web_pay_emp (
         pegawai_id INT NOT NULL PRIMARY KEY,
         gaji_pokok BIGINT NOT NULL DEFAULT 0,
@@ -51,6 +54,7 @@ function payroll_defaults()
         'ot_divisor' => 173,                                              // hourly wage = monthly wage / 173 (PP 35/2021)
         'late_per_minute' => 0,                                           // company rule, rupiah per late minute
         'absent_deduct' => 1,                                             // 1 = deduct pro-rata for absent days without leave
+        'ot_requires_approval' => 0,                                      // 1 = pay overtime only up to approved requests
     ];
 }
 
@@ -204,6 +208,8 @@ function calculate_payroll($from, $to)
 {
     $s = payroll_settings();
     $pays = pay_data();
+    $approvedOt = $s['ot_requires_approval'] ? approved_overtime($from, $to) : null;
+    $claims = reimbursements_for_period($to);
     $days = [];
     foreach (daily_attendance($from, $to) as $r) $days[$r['pegawai_id']][] = $r;
     $out = [];
@@ -219,12 +225,13 @@ function calculate_payroll($from, $to)
             if ($r['first'] || $r['last']) $c['present']++;
             if ($r['status'] === 'absent') $c['absent']++;
             $c['late_min'] += $r['late'];
-            if ($r['off'] && $r['minutes']) {                  // worked on a day off / holiday
-                $c['ot_rest_min'] += $r['minutes'];
-                $c['ot_pay'] += overtime_pay($r['minutes'], $hourly, true);
-            } elseif ($r['ot']) {
-                $c['ot_min'] += $r['ot'];
-                $c['ot_pay'] += overtime_pay($r['ot'], $hourly, false);
+            $rest = $r['off'] && $r['minutes'];                // worked on a day off / holiday
+            $otMin = $rest ? $r['minutes'] : $r['ot'];
+            // with the approval rule on, pay what the machine recorded but no more than the approved request
+            if ($approvedOt !== null) $otMin = min($otMin, isset($approvedOt[$id][$r['date']]) ? $approvedOt[$id][$r['date']] : 0);
+            if ($otMin > 0) {
+                $c[$rest ? 'ot_rest_min' : 'ot_min'] += $otMin;
+                $c['ot_pay'] += overtime_pay($otMin, $hourly, $rest);
             }
         }
         $earn = [
@@ -238,6 +245,10 @@ function calculate_payroll($from, $to)
         if ($s['late_per_minute'] && $c['late_min']) $deduct['Potongan terlambat (' . $c['late_min'] . ' menit)'] = (int)round($s['late_per_minute'] * $c['late_min']);
         $b = bpjs($p, $s);
         $earnTotal = array_sum($earn) - array_sum($deduct);
+        // approved reimbursements: paid with the salary but not income, so outside the PPh 21 gross
+        $myClaims = isset($claims[$id]) ? $claims[$id] : [];
+        $reimb = (int)array_sum(array_column($myClaims, 'jumlah'));
+        if ($reimb) $earn['Reimbursement (' . count($myClaims) . ' klaim)'] = $reimb;
         // gross for PPh 21 includes the company-paid JKK, JKM and BPJS Kesehatan (PP 58/2023)
         $bruto = $earnTotal + $b['jkk'] + $b['jkm'] + $b['kes_co'];
         $iuranEmp = $b['jht_emp'] + $b['jp_emp'];
@@ -249,7 +260,8 @@ function calculate_payroll($from, $to)
             'earnings' => array_filter($earn), 'deductions' => array_filter($deduct + $empDeduct),
             'company' => ['BPJS Kesehatan (4%)' => $b['kes_co'], 'BPJS JHT (3,7%)' => $b['jht_co'], 'BPJS JP (2%)' => $b['jp_co'], 'BPJS JKK' => $b['jkk'], 'BPJS JKM' => $b['jkm']],
             'bruto' => $bruto, 'iuran_pensiun' => $iuranEmp, 'pph21' => $tax, 'pph21_note' => $taxNote,
-            'netto' => $earnTotal - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax,
+            'netto' => $earnTotal + $reimb - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax,
+            'reimburse_ids' => array_map('intval', array_column($myClaims, 'id')),
         ];
     }
     return $out;
@@ -260,5 +272,8 @@ function save_payroll($rows, $publish)
     foreach ($rows as $r) {
         q('REPLACE INTO web_payslip (period_to, pegawai_id, period_from, bruto, pph21, netto, detail, published, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [$r['period_to'], $r['pegawai_id'], $r['period_from'], $r['bruto'], $r['pph21'], $r['netto'], json_encode($r), $publish ? 1 : 0, date('Y-m-d H:i:s'), actor()]);
+        if ($r['reimburse_ids']) {
+            q('UPDATE web_reimburse SET paid_period_to = ? WHERE id IN (' . implode(',', $r['reimburse_ids']) . ')', [$r['period_to']]);
+        }
     }
 }

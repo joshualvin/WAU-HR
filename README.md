@@ -60,3 +60,9 @@ HR → Penggajian (admins only):
 
 Rates and TER brackets are in `inc/payroll.php`; `php tests/payroll_test.php` checks them. Not covered: the 20% surcharge for employees without NPWP/NIK, and annualising for employees who join or leave mid-year.
 
+## Lembur and reimbursement
+- **Portal Pegawai → Lembur**: employees request overtime (date, start, end, reason). **HR → Manajemen Waktu → Lembur** approves or rejects, next to what the machine recorded that day.
+- **Portal Pegawai → Reimbursement**: employees claim expenses with a photo or PDF receipt (max 5 MB, checked by content). **HR → Penggajian → Reimbursement** approves or rejects. Approved claims are paid with the next saved payroll as a non-taxable earning and marked with that period.
+- **Pengaturan gaji → Lembur harus diajukan**: 0 (default) pays overtime from scans as before; 1 pays only up to the approved request per day.
+- Receipts are stored in `uploads/receipts/` (kept out of git, blocked for direct web access by `uploads/.htaccess`) and opened through `receipt.php`, only by an admin or the employee who uploaded them.
+

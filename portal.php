@@ -93,6 +93,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = add_manual_scan($me['id'], date('Y-m-d'), date('H:i'), $jenis, 0, 'Live attendance (portal)', true);
         flash($err ?: ($jenis === 100 ? 'Clock in tercatat ' : 'Clock out tercatat ') . date('H:i') . '.', $err ? 'err' : 'ok');
         redirect('portal.php');
+    } elseif ($action === 'ot_request') {
+        ensure_claim_tables();
+        $d = post('tgl');
+        if (!valid_date($d)) $error = 'Isi tanggal lembur.';
+        elseif (!valid_time(post('mulai')) || !valid_time(post('selesai'))) $error = 'Isi jam mulai dan selesai.';
+        elseif (post('alasan') === '') $error = 'Isi alasan lembur.';
+        else {
+            $min = span_minutes(post('mulai'), post('selesai'));
+            if ($min > 12 * 60) $error = 'Lembur maksimal 12 jam per pengajuan.';
+            else {
+                q('INSERT INTO web_overtime (pegawai_id, tgl, jam_mulai, jam_selesai, minutes, alasan, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [$me['id'], $d, post('mulai'), post('selesai'), $min, post('alasan'), CLAIM_PENDING, date('Y-m-d H:i:s')]);
+                audit('overtime_request', "{$me['name']} $d " . post('mulai') . '-' . post('selesai'));
+                flash('Pengajuan lembur terkirim. Menunggu persetujuan HR.');
+                redirect('portal.php?p=overtime');
+            }
+        }
+        $page = 'overtime';
+    } elseif ($action === 'rb_request') {
+        ensure_claim_tables();
+        $amount = (int)preg_replace('/\D/', '', post('jumlah'));
+        if (!valid_date(post('tgl')) || post('tgl') > date('Y-m-d')) $error = 'Isi tanggal pengeluaran (hari ini atau sebelumnya).';
+        elseif (!in_array(post('kategori'), reimburse_categories(), true)) $error = 'Pilih kategori.';
+        elseif ($amount <= 0) $error = 'Isi jumlah.';
+        elseif (post('keterangan') === '') $error = 'Isi keterangan.';
+        else {
+            list($file, $err) = save_receipt(isset($_FILES['bukti']) ? $_FILES['bukti'] : null);
+            if ($err) $error = $err;
+            elseif (!$file) $error = 'Lampirkan foto / PDF bukti pembayaran.';
+            else {
+                q('INSERT INTO web_reimburse (pegawai_id, tgl, kategori, jumlah, keterangan, file, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                    [$me['id'], post('tgl'), post('kategori'), $amount, post('keterangan'), $file, CLAIM_PENDING, date('Y-m-d H:i:s')]);
+                audit('reimburse_request', "{$me['name']} " . post('kategori') . " $amount");
+                flash('Klaim reimbursement terkirim. Menunggu persetujuan HR.');
+                redirect('portal.php?p=reimburse');
+            }
+        }
+        $page = 'reimburse';
+    } elseif ($action === 'ot_cancel' || $action === 'rb_cancel') {
+        ensure_claim_tables();
+        $table = $action === 'ot_cancel' ? 'web_overtime' : 'web_reimburse';
+        // only the employee's own requests that HR has not decided yet
+        $row = q("SELECT * FROM $table WHERE id = ? AND pegawai_id = ? AND status = ?", [(int)post('id'), $me['id'], CLAIM_PENDING])->fetch();
+        if ($row) {
+            q("DELETE FROM $table WHERE id = ?", [$row['id']]);
+            if (!empty($row['file'])) @unlink(RECEIPT_DIR . '/' . basename($row['file']));
+            flash('Pengajuan dibatalkan.');
+        }
+        redirect('portal.php?p=' . ($action === 'ot_cancel' ? 'overtime' : 'reimburse'));
     } elseif ($action === 'cancel') {
         $key = leave_key_from_post();
         $row = find_leave($key);
@@ -116,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 list($pFrom, $pTo) = current_period();
-$tabs = ['home' => 'Beranda', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'slip' => 'Slip Gaji', 'profile' => 'Profil'];
+$tabs = ['home' => 'Beranda', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'slip' => 'Slip Gaji', 'profile' => 'Profil'];
 if (!isset($tabs[$page])) $page = 'home';
 portal_header($tabs[$page], $tabs, $page, $emp);
 if ($error) echo '<div class="p-alert err">' . h($error) . '</div>';
@@ -232,6 +281,64 @@ if ($page === 'home'):
       </div>
     <?php endforeach; ?>
     <?php if (!$reqs): ?><div class="p-item muted">Belum ada pengajuan.</div><?php endif; ?>
+  </div>
+
+<?php elseif ($page === 'overtime'):
+    ensure_claim_tables();
+    $reqs = q('SELECT * FROM web_overtime WHERE pegawai_id = ? ORDER BY tgl DESC, id DESC LIMIT 100', [$me['id']])->fetchAll(); ?>
+  <div class="p-card">
+    <h2>Ajukan lembur</h2>
+    <form method="post" class="p-form two">
+      <?= csrf_field() ?><input type="hidden" name="action" value="ot_request">
+      <label>Tanggal <input type="date" name="tgl" required value="<?= h(post('tgl', date('Y-m-d'))) ?>"></label>
+      <label>Mulai <input type="time" name="mulai" required value="<?= h(post('mulai', '16:00')) ?>"></label>
+      <label>Selesai <input type="time" name="selesai" required value="<?= h(post('selesai', '18:00')) ?>"></label>
+      <label class="wide">Alasan / pekerjaan <input name="alasan" required maxlength="255" value="<?= h(post('alasan')) ?>"></label>
+      <div class="wide"><button class="p-btn primary">Kirim pengajuan</button></div>
+    </form>
+  </div>
+  <h2>Riwayat lembur</h2>
+  <div class="p-list">
+    <?php foreach ($reqs as $r): ?>
+      <div class="p-item">
+        <div class="p-date"><b><?= date('d', strtotime($r['tgl'])) ?></b><span><?= date('m-y', strtotime($r['tgl'])) ?></span></div>
+        <div class="p-main"><div><?= h(substr($r['jam_mulai'], 0, 5)) ?> – <?= h(substr($r['jam_selesai'], 0, 5)) ?> · <?= fmt_minutes($r['minutes']) ?> jam</div><div class="muted"><?= h($r['alasan']) ?></div></div>
+        <div style="display:flex;gap:6px;align-items:center"><?= claim_badge($r['status']) ?>
+          <?php if ($r['status'] === CLAIM_PENDING): ?><form method="post" onsubmit="return confirm('Batalkan pengajuan ini?')"><?= csrf_field() ?>
+            <input type="hidden" name="action" value="ot_cancel"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="p-btn small">Batal</button></form><?php endif; ?></div>
+      </div>
+    <?php endforeach; ?>
+    <?php if (!$reqs): ?><div class="p-item muted">Belum ada pengajuan lembur.</div><?php endif; ?>
+  </div>
+
+<?php elseif ($page === 'reimburse'):
+    ensure_claim_tables();
+    $claims = q('SELECT * FROM web_reimburse WHERE pegawai_id = ? ORDER BY tgl DESC, id DESC LIMIT 100', [$me['id']])->fetchAll(); ?>
+  <div class="p-card">
+    <h2>Klaim reimbursement</h2>
+    <form method="post" class="p-form two" enctype="multipart/form-data">
+      <?= csrf_field() ?><input type="hidden" name="action" value="rb_request">
+      <label>Tanggal pengeluaran <input type="date" name="tgl" required max="<?= date('Y-m-d') ?>" value="<?= h(post('tgl', date('Y-m-d'))) ?>"></label>
+      <label>Kategori <select name="kategori" required><?php foreach (reimburse_categories() as $k): ?><option <?= post('kategori') === $k ? 'selected' : '' ?>><?= h($k) ?></option><?php endforeach; ?></select></label>
+      <label>Jumlah (Rp) <input name="jumlah" inputmode="numeric" required value="<?= h(post('jumlah')) ?>" placeholder="150000"></label>
+      <label>Bukti (foto / PDF, maks 5 MB) <input type="file" name="bukti" accept="image/*,application/pdf" required style="height:auto;padding:6px"></label>
+      <label class="wide">Keterangan <input name="keterangan" required maxlength="255" value="<?= h(post('keterangan')) ?>"></label>
+      <div class="wide"><button class="p-btn primary">Kirim klaim</button> <span class="muted">Klaim yang disetujui dibayar bersama gaji berikutnya.</span></div>
+    </form>
+  </div>
+  <h2>Riwayat klaim</h2>
+  <div class="p-list">
+    <?php foreach ($claims as $r): ?>
+      <div class="p-item">
+        <div class="p-date"><b><?= date('d', strtotime($r['tgl'])) ?></b><span><?= date('m-y', strtotime($r['tgl'])) ?></span></div>
+        <div class="p-main"><div><?= h($r['kategori']) ?> · <b><?= rupiah($r['jumlah']) ?></b></div>
+          <div class="muted"><?= h($r['keterangan']) ?><?= $r['paid_period_to'] ? ' · dibayar dengan gaji s/d ' . h(date('d-m-Y', strtotime($r['paid_period_to']))) : '' ?> · <a href="receipt.php?id=<?= (int)$r['id'] ?>" target="_blank">bukti</a></div></div>
+        <div style="display:flex;gap:6px;align-items:center"><?= claim_badge($r['status']) ?>
+          <?php if ($r['status'] === CLAIM_PENDING): ?><form method="post" onsubmit="return confirm('Batalkan klaim ini?')"><?= csrf_field() ?>
+            <input type="hidden" name="action" value="rb_cancel"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="p-btn small">Batal</button></form><?php endif; ?></div>
+      </div>
+    <?php endforeach; ?>
+    <?php if (!$claims): ?><div class="p-item muted">Belum ada klaim.</div><?php endif; ?>
   </div>
 
 <?php elseif ($page === 'slip'):

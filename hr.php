@@ -4,8 +4,10 @@
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
+require __DIR__ . '/inc/payroll.php';
 $me = require_login();
 ensure_web_tables();
+ensure_payroll_tables();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -13,6 +15,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'approve' || $action === 'reject') {
         decide_request(leave_key_from_post(), $action === 'approve');
         flash($action === 'approve' ? 'Pengajuan disetujui.' : 'Pengajuan ditolak.');
+    } elseif ($action === 'ot_approve' || $action === 'ot_reject') {
+        $row = q('SELECT o.*, p.pegawai_nama FROM web_overtime o JOIN pegawai p ON p.pegawai_id = o.pegawai_id WHERE o.id = ? AND o.status = ?', [(int)post('id'), CLAIM_PENDING])->fetch();
+        if ($row) {
+            q('UPDATE web_overtime SET status = ?, decided_by = ? WHERE id = ?', [$action === 'ot_approve' ? CLAIM_APPROVED : CLAIM_REJECTED, actor(), $row['id']]);
+            audit($action, "{$row['pegawai_nama']} {$row['tgl']} " . fmt_minutes($row['minutes']));
+            flash($action === 'ot_approve' ? 'Lembur disetujui.' : 'Lembur ditolak.');
+        }
     } elseif ($action === 'code' && $me['role'] === 'admin') {
         $emp = employee(post('pegawai_id'));
         if ($emp) {
@@ -101,8 +110,13 @@ if ($m === 'home'):
           <div><i class="dot" style="background:var(--bad)"></i><span>Belum / tidak scan</span><span class="n"><?= $c['absent'] ?></span><span class="p"></span></div>
           <div><i class="dot" style="background:var(--line)"></i><span>Libur</span><span class="n"><?= $c['off'] ?></span><span class="p"></span></div>
         </div></div><div class="wfoot"><a href="hr.php?m=attendance">Lihat kehadiran ›</a></div></div>
+      <?php $otPend = (int)q('SELECT COUNT(*) FROM web_overtime WHERE status = ?', [CLAIM_PENDING])->fetchColumn();
+            $rbPend = (int)q('SELECT COUNT(*) FROM web_reimburse WHERE status = ?', [CLAIM_PENDING])->fetchColumn(); ?>
       <div class="card widget"><div class="wbody"><h2>Menunggu persetujuan</h2>
-        <div style="font-size:32px;font-weight:600"><?= count($pending) ?></div><div class="muted">pengajuan cuti / izin</div></div>
+        <div style="font-size:32px;font-weight:600"><?= count($pending) + $otPend + $rbPend ?></div>
+        <div class="kv"><div><i class="dot" style="background:var(--off)"></i><a href="hr.php?m=timeoff">Cuti / izin</a><span class="n"><?= count($pending) ?></span><span class="p"></span></div>
+          <div><i class="dot" style="background:var(--warn)"></i><a href="hr.php?m=overtime">Lembur</a><span class="n"><?= $otPend ?></span><span class="p"></span></div>
+          <div><i class="dot" style="background:var(--primary)"></i><a href="payroll.php?p=reimburse">Reimbursement</a><span class="n"><?= $rbPend ?></span><span class="p"></span></div></div></div>
         <div class="wfoot"><a href="hr.php?m=timeoff">Tinjau ›</a></div></div>
       <div class="card widget"><div class="wbody"><h2>Ulang tahun bulan ini</h2><div class="list">
         <?php foreach (array_slice($bdays, 0, 4) as $p): ?><div class="li"><span class="avatar"><?= h(initials($p['pegawai_nama'])) ?></span><div class="meta"><b><?= h($p['pegawai_nama']) ?></b><small><?= date('d-m', strtotime($p['tgl_lahir'])) ?></small></div></div><?php endforeach; ?>
@@ -285,6 +299,40 @@ elseif ($m === 'timeoff'):
       <td><?= $r['izin_tgl_pengajuan'] ? date('d-m-Y', strtotime($r['izin_tgl_pengajuan'])) : '' ?></td><td><?= request_badge($r) ?></td>
       <td class="actions"><?= request_state($r) === 'pending' ? decide_buttons($r, $csrf, $back) : '' ?></td></tr><?php endforeach; ?>
     </tbody></table></div><?php if (!$shown): ?><div class="empty"><strong>Tidak ada pengajuan</strong>Pengajuan dari Portal Pegawai muncul di sini.</div><?php endif; ?></div>
+<?php
+// ======================================================================= Lembur (pengajuan)
+elseif ($m === 'overtime'):
+    $state = get('s', CLAIM_PENDING);
+    $cnt = q('SELECT status, COUNT(*) FROM web_overtime GROUP BY status')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $rows = q('SELECT o.*, p.pegawai_nama, p.pegawai_pin FROM web_overtime o JOIN pegawai p ON p.pegawai_id = o.pegawai_id WHERE o.status = ? ORDER BY o.tgl DESC, o.id DESC LIMIT 500', [$state])->fetchAll();
+    // overtime the machine actually recorded that day, to compare with the request
+    $actual = [];
+    if ($rows) {
+        $dates = array_column($rows, 'tgl');
+        foreach (daily_attendance(min($dates), max($dates)) as $r) $actual[$r['pegawai_id']][$r['date']] = $r;
+    }
+    $otRule = payroll_settings()['ot_requires_approval'];
+    hris_header('Lembur', 'time', 'overtime', 'Manajemen Waktu'); ?>
+  <div class="counters" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <?php foreach ([CLAIM_PENDING => 'Menunggu persetujuan', CLAIM_APPROVED => 'Disetujui', CLAIM_REJECTED => 'Ditolak'] as $k => $label): ?>
+      <a class="counter<?= $state === $k ? ' on' : '' ?>" href="hr.php?m=overtime&s=<?= $k ?>"><b><?= (int)(isset($cnt[$k]) ? $cnt[$k] : 0) ?></b><span><?= $label ?></span></a>
+    <?php endforeach; ?>
+  </div>
+  <div class="notice"><div><b><?= $otRule ? 'Gaji hanya membayar lembur yang disetujui' : 'Gaji membayar lembur dari scan' ?></b>
+    <?= $otRule ? 'Lembur dibayar sesuai scan, paling banyak sebanyak jam yang disetujui.' : 'Pengajuan di sini hanya catatan; ubah di Penggajian → Pengaturan gaji ("Lembur harus diajukan").' ?></div></div>
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Nama karyawan</th><th>Tanggal</th><th>Diajukan</th><th>Durasi</th><th>Tercatat di mesin</th><th>Alasan</th><th>Status</th><th class="actions">Aksi</th></tr></thead><tbody>
+    <?php foreach ($rows as $r): $a = isset($actual[$r['pegawai_id']][$r['tgl']]) ? $actual[$r['pegawai_id']][$r['tgl']] : null; ?>
+      <tr><td><?= who($r) ?></td><td><?= h(fmt_date($r['tgl'])) ?></td><td><?= h(substr($r['jam_mulai'], 0, 5)) ?> – <?= h(substr($r['jam_selesai'], 0, 5)) ?></td>
+        <td><?= fmt_minutes($r['minutes']) ?></td>
+        <td class="muted"><?= $a ? h(trim(($a['first'] ?: '--:--') . ' – ' . ($a['last'] ?: '--:--'))) . ($a['ot'] ? ' · lembur ' . fmt_minutes($a['ot']) : '') : '—' ?></td>
+        <td><?= h($r['alasan']) ?></td><td><?= claim_badge($r['status']) ?></td>
+        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): foreach (['ot_approve' => ['primary', 'Setujui'], 'ot_reject' => ['outline', 'Tolak']] as $act => $b): ?>
+          <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="<?= $act ?>"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>">
+            <button class="btn small <?= $b[0] ?>"><?= $b[1] ?></button></form>
+        <?php endforeach; endif; ?></td></tr>
+    <?php endforeach; ?>
+    </tbody></table></div><?php if (!$rows): ?><div class="empty"><strong>Tidak ada pengajuan lembur</strong>Karyawan mengajukan lembur di Portal Pegawai.</div><?php endif; ?></div>
 <?php
 // ======================================================================= Saldo cuti
 elseif ($m === 'balance'):

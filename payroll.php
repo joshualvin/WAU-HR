@@ -27,6 +27,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit('payroll_' . $action, "$from..$to: " . count($rows) . ' karyawan');
         flash(count($rows) . ' slip gaji ' . ($action === 'publish' ? 'disimpan dan diterbitkan ke Portal Pegawai.' : 'disimpan sebagai draf.'));
         redirect('payroll.php?p=run&' . http_build_query(['from' => $from, 'to' => $to]));
+    } elseif ($action === 'rb_approve' || $action === 'rb_reject') {
+        $row = q('SELECT r.*, p.pegawai_nama FROM web_reimburse r JOIN pegawai p ON p.pegawai_id = r.pegawai_id WHERE r.id = ? AND r.status = ?', [(int)post('id'), CLAIM_PENDING])->fetch();
+        if ($row) {
+            q('UPDATE web_reimburse SET status = ?, decided_by = ? WHERE id = ?', [$action === 'rb_approve' ? CLAIM_APPROVED : CLAIM_REJECTED, actor(), $row['id']]);
+            audit($action, "{$row['pegawai_nama']} {$row['kategori']} {$row['jumlah']}");
+            flash($action === 'rb_approve' ? 'Klaim disetujui; dibayar bersama gaji periode berikutnya.' : 'Klaim ditolak.');
+        }
+        redirect(safe_back(post('back'), 'payroll.php?p=reimburse'));
     } elseif ($action === 'unpublish') {
         q('UPDATE web_payslip SET published = 0 WHERE period_to = ?', [$to]);
         audit('payroll_unpublish', $to);
@@ -158,6 +166,33 @@ elseif ($p === 'slips'):
     </tbody></table></div></div>
   <?php endif; ?>
 <?php
+// ======================================================================= Reimbursement
+elseif ($p === 'reimburse'):
+    $state = get('s', CLAIM_PENDING);
+    $cnt = q('SELECT status, COUNT(*) n, SUM(jumlah) t FROM web_reimburse GROUP BY status')->fetchAll(PDO::FETCH_UNIQUE);
+    $rows = q('SELECT r.*, p.pegawai_nama, p.pegawai_pin FROM web_reimburse r JOIN pegawai p ON p.pegawai_id = r.pegawai_id WHERE r.status = ? ORDER BY r.tgl DESC, r.id DESC LIMIT 500', [$state])->fetchAll();
+    $back = h($_SERVER['REQUEST_URI']);
+    hris_header('Reimbursement', 'payroll', 'payroll.php?p=reimburse', 'Penggajian'); ?>
+  <div class="counters" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <?php foreach ([CLAIM_PENDING => 'Menunggu persetujuan', CLAIM_APPROVED => 'Disetujui', CLAIM_REJECTED => 'Ditolak'] as $k => $label): $c = isset($cnt[$k]) ? $cnt[$k] : ['n' => 0, 't' => 0]; ?>
+      <a class="counter<?= $state === $k ? ' on' : '' ?>" href="payroll.php?p=reimburse&s=<?= $k ?>"><b><?= (int)$c['n'] ?></b><span><?= $label ?> · <?= rupiah($c['t']) ?></span></a>
+    <?php endforeach; ?>
+  </div>
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Nama karyawan</th><th>Tanggal</th><th>Kategori</th><th class="num">Jumlah</th><th>Keterangan</th><th>Bukti</th><th>Status</th><th>Dibayar</th><th class="actions">Aksi</th></tr></thead><tbody>
+    <?php foreach ($rows as $r): ?>
+      <tr><td><b><?= h($r['pegawai_nama']) ?></b> <span class="muted">PIN <?= h($r['pegawai_pin']) ?></span></td><td><?= h(fmt_date($r['tgl'])) ?></td><td><?= h($r['kategori']) ?></td>
+        <td class="num"><b><?= rupiah($r['jumlah']) ?></b></td><td><?= h($r['keterangan']) ?></td>
+        <td><?= $r['file'] ? '<a href="receipt.php?id=' . (int)$r['id'] . '" target="_blank">Lihat</a>' : '—' ?></td><td><?= claim_badge($r['status']) ?></td>
+        <td class="muted"><?= $r['paid_period_to'] ? 'gaji s/d ' . h(date('d-m-Y', strtotime($r['paid_period_to']))) : ($r['status'] === CLAIM_APPROVED ? 'gaji berikutnya' : '') ?></td>
+        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): foreach (['rb_approve' => ['primary', 'Setujui'], 'rb_reject' => ['outline', 'Tolak']] as $act => $b): ?>
+          <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="<?= $act ?>"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>">
+            <button class="btn small <?= $b[0] ?>"><?= $b[1] ?></button></form>
+        <?php endforeach; endif; ?></td></tr>
+    <?php endforeach; ?>
+    </tbody></table></div><?php if (!$rows): ?><div class="empty"><strong>Tidak ada klaim</strong>Karyawan mengirim klaim di Portal Pegawai.</div><?php endif; ?></div>
+  <p class="muted">Klaim yang disetujui ikut dibayar saat gaji periode berikutnya disimpan, sebagai pendapatan di luar penghasilan bruto PPh 21.</p>
+<?php
 // ======================================================================= Data gaji karyawan
 elseif ($p === 'setup'):
     $pays = pay_data();
@@ -184,7 +219,8 @@ else:
         'BPJS Ketenagakerjaan' => ['jht_co' => 'JHT perusahaan (%)', 'jht_emp' => 'JHT karyawan (%)', 'jp_co' => 'JP perusahaan (%)', 'jp_emp' => 'JP karyawan (%)',
                                    'jp_cap' => 'Batas upah JP (Rp)', 'jkk' => 'JKK (%) — sesuai tingkat risiko', 'jkm' => 'JKM (%)'],
         'Lembur & potongan' => ['ot_divisor' => 'Pembagi upah per jam (173)', 'late_per_minute' => 'Potongan terlambat per menit (Rp, 0 = tidak dipotong)',
-                                'absent_deduct' => 'Potong gaji hari tidak hadir tanpa izin (1 = ya, 0 = tidak)'],
+                                'absent_deduct' => 'Potong gaji hari tidak hadir tanpa izin (1 = ya, 0 = tidak)',
+                                'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)'],
     ];
     hris_header('Pengaturan gaji', 'payroll', 'payroll.php?p=settings', 'Penggajian'); ?>
   <form method="post" class="section"><?= $csrf ?><input type="hidden" name="action" value="settings">

@@ -1,0 +1,2 @@
+# Receipts are served only through receipt.php, which checks who is asking.
+Require all denied

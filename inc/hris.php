@@ -24,9 +24,9 @@ function hris_modules()
     return [
         'home'     => ['Beranda', 'home', ['home' => 'Beranda']],
         'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan']],
-        'time'     => ['Manajemen Waktu', 'clock', ['attendance' => 'Kehadiran', 'timeoff' => 'Cuti & Izin', 'balance' => 'Saldo cuti']],
+        'time'     => ['Manajemen Waktu', 'clock', ['attendance' => 'Kehadiran', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'balance' => 'Saldo cuti']],
         'report'   => ['Laporan', 'report', ['reports' => 'Semua laporan']],
-        'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji',
+        'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=reimburse' => 'Reimbursement',
                                                'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=settings' => 'Pengaturan gaji']],
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];
