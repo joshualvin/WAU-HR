@@ -64,16 +64,7 @@ function span_minutes($start, $end)
  */
 function save_receipt($upload)
 {
-    if (!$upload || $upload['error'] === UPLOAD_ERR_NO_FILE) return ['', null];
-    if ($upload['error'] !== UPLOAD_ERR_OK) return ['', 'Upload bukti gagal (kode ' . (int)$upload['error'] . ').'];
-    if ($upload['size'] > 5 * 1024 * 1024) return ['', 'Bukti maksimal 5 MB.'];
-    $types = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'application/pdf' => 'pdf'];
-    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($upload['tmp_name']);
-    if (!isset($types[$mime])) return ['', 'Bukti harus foto (JPG, PNG) atau PDF.'];
-    if (!is_dir(RECEIPT_DIR)) mkdir(RECEIPT_DIR, 0775, true);
-    $name = bin2hex(random_bytes(12)) . '.' . $types[$mime];
-    if (!move_uploaded_file($upload['tmp_name'], RECEIPT_DIR . '/' . $name)) return ['', 'Bukti tidak bisa disimpan di server.'];
-    return [$name, null];
+    return save_upload($upload, RECEIPT_DIR, ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'application/pdf' => 'pdf'], 'Bukti', 'foto (JPG, PNG) atau PDF');
 }
 
 /** Approved overtime minutes per employee per day: [pegawai_id][Y-m-d] => minutes. */

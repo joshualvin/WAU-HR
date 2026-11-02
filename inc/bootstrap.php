@@ -185,6 +185,23 @@ function audit($action, $detail)
         [date('Y-m-d H:i:s'), actor(), $action, mb_substr($detail, 0, 500)]);
 }
 
+/**
+ * Save an uploaded file (max 5 MB) under a random name in $dir. The type is checked from the file content, not the
+ * browser's claim; $types maps allowed MIME types to extensions. Returns [file name or '', error message or null].
+ */
+function save_upload($upload, $dir, $types, $what, $typeHint)
+{
+    if (!$upload || $upload['error'] === UPLOAD_ERR_NO_FILE) return ['', null];
+    if ($upload['error'] !== UPLOAD_ERR_OK) return ['', "Upload $what gagal (kode " . (int)$upload['error'] . ').'];
+    if ($upload['size'] > 5 * 1024 * 1024) return ['', "$what maksimal 5 MB."];
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file($upload['tmp_name']);
+    if (!isset($types[$mime])) return ['', "$what harus $typeHint."];
+    if (!is_dir($dir)) mkdir($dir, 0775, true);
+    $name = bin2hex(random_bytes(12)) . '.' . $types[$mime];
+    if (!move_uploaded_file($upload['tmp_name'], $dir . '/' . $name)) return ['', "$what tidak bisa disimpan di server."];
+    return [$name, null];
+}
+
 // ---------- Fingerspot lookups ----------
 
 // "Tidak scan" leave types. Fingerspot records a forgotten scan as an approved izin of one of these types,

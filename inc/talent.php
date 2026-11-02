@@ -11,7 +11,7 @@ function ensure_talent_tables()
 {
     db()->exec("CREATE TABLE IF NOT EXISTS web_checklist_tpl (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        type VARCHAR(10) NOT NULL,
+        type VARCHAR(12) NOT NULL,
         item VARCHAR(200) NOT NULL,
         who VARCHAR(10) NOT NULL DEFAULT 'HR',
         due_days INT NOT NULL DEFAULT 0,
@@ -20,7 +20,7 @@ function ensure_talent_tables()
     db()->exec("CREATE TABLE IF NOT EXISTS web_checklist (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         pegawai_id INT NOT NULL,
-        type VARCHAR(10) NOT NULL,
+        type VARCHAR(12) NOT NULL,
         item VARCHAR(200) NOT NULL,
         who VARCHAR(10) NOT NULL,
         due_date DATE NULL,
@@ -51,21 +51,26 @@ function ensure_talent_tables()
         final_score DECIMAL(4,2) NULL,
         PRIMARY KEY (cycle_id, pegawai_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
-    if (!q('SELECT COUNT(*) FROM web_checklist_tpl')->fetchColumn()) {
-        $defaults = [
-            'onboarding' => [['Siapkan kontrak kerja dan tanda tangan', 'HR', -1], ['Daftarkan PIN di mesin absensi dan rekam sidik jari', 'HR', 0],
-                             ['Daftarkan BPJS Kesehatan dan Ketenagakerjaan', 'HR', 7], ['Isi data gaji, PTKP dan rekening bank', 'HR', 3],
-                             ['Buat kode login Portal Pegawai', 'HR', 0], ['Serahkan KTP, NPWP, KK dan buku tabungan', 'Karyawan', 3],
-                             ['Baca peraturan perusahaan', 'Karyawan', 7], ['Perkenalan tim dan orientasi tempat kerja', 'Atasan', 1],
-                             ['Evaluasi masa percobaan', 'Atasan', 90]],
-            'offboarding' => [['Terima surat pengunduran diri / keputusan PHK', 'HR', 0], ['Serah terima pekerjaan', 'Atasan', 7],
-                              ['Kembalikan seragam, kunci, peralatan dan ID card', 'Karyawan', 14], ['Hapus PIN dari mesin absensi', 'HR', 14],
-                              ['Hitung gaji terakhir, sisa cuti dan pesangon', 'HR', 14], ['Nonaktifkan BPJS', 'HR', 30],
-                              ['Buat surat keterangan kerja (paklaring)', 'HR', 14], ['Exit interview', 'HR', 7]],
-        ];
-        foreach ($defaults as $type => $items) {
-            foreach ($items as $i => $it) q('INSERT INTO web_checklist_tpl (type, item, who, due_days, sort) VALUES (?, ?, ?, ?, ?)', [$type, $it[0], $it[1], $it[2], $i]);
+    // 'offboarding' did not fit the first VARCHAR(10) type column
+    foreach (['web_checklist_tpl', 'web_checklist'] as $t) {
+        if ((int)q('SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [$t, 'type'])->fetchColumn() < 12) {
+            db()->exec("ALTER TABLE $t MODIFY type VARCHAR(12) NOT NULL");
         }
+    }
+    $seeded = q('SELECT DISTINCT type FROM web_checklist_tpl')->fetchAll(PDO::FETCH_COLUMN);
+    $defaults = [
+        'onboarding' => [['Siapkan kontrak kerja dan tanda tangan', 'HR', -1], ['Daftarkan PIN di mesin absensi dan rekam sidik jari', 'HR', 0],
+                         ['Daftarkan BPJS Kesehatan dan Ketenagakerjaan', 'HR', 7], ['Isi data gaji, PTKP dan rekening bank', 'HR', 3],
+                         ['Buat kode login Portal Pegawai', 'HR', 0], ['Serahkan KTP, NPWP, KK dan buku tabungan', 'Karyawan', 3],
+                         ['Baca peraturan perusahaan', 'Karyawan', 7], ['Perkenalan tim dan orientasi tempat kerja', 'Atasan', 1],
+                         ['Evaluasi masa percobaan', 'Atasan', 90]],
+        'offboarding' => [['Terima surat pengunduran diri / keputusan PHK', 'HR', 0], ['Serah terima pekerjaan', 'Atasan', 7],
+                          ['Kembalikan seragam, kunci, peralatan dan ID card', 'Karyawan', 14], ['Hapus PIN dari mesin absensi', 'HR', 14],
+                          ['Hitung gaji terakhir, sisa cuti dan pesangon', 'HR', 14], ['Nonaktifkan BPJS', 'HR', 30],
+                          ['Buat surat keterangan kerja (paklaring)', 'HR', 14], ['Exit interview', 'HR', 7]],
+    ];
+    foreach (array_diff_key($defaults, array_flip($seeded)) as $type => $items) {
+        foreach ($items as $i => $it) q('INSERT INTO web_checklist_tpl (type, item, who, due_days, sort) VALUES (?, ?, ?, ?, ?)', [$type, $it[0], $it[1], $it[2], $i]);
     }
 }
 

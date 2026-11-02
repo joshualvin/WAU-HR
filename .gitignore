@@ -2,3 +2,5 @@ config.php
 .DS_Store
 uploads/receipts/*
 !uploads/receipts/.gitkeep
+uploads/cv/*
+!uploads/cv/.gitkeep
