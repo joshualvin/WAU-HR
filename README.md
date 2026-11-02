@@ -26,3 +26,6 @@ Plain PHP + MySQL; no build step.
   `http://192.168.20.102` clock-ins are saved without coordinates. Add a certificate to Apache to record locations.
 - There is no sign-in yet: anyone who can open the page can record attendance and approve time off.
   Each computer chooses "who is clocking in" from the user menu (top right).
+
+## fin-pro/
+A second app in [`fin-pro/`](fin-pro/README.md): Fingerspot-style attendance screens, a Talenta-style HR area and an employee portal that work directly on the Fingerspot Personnel database (`fin_pro`).
