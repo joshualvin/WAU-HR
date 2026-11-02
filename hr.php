@@ -84,7 +84,7 @@ if ($m === 'home'):
       <p><?= h(fmt_date($today)) ?> · <?= count($all) ?> karyawan aktif</p>
       <div class="label">Pintasan</div>
       <div class="chips">
-        <a class="chip" href="index.php">Absensi (Fingerspot)</a>
+        <a class="chip" href="dashboard.php">Absensi (Fingerspot)</a>
         <a class="chip" href="quick.php">Input Cepat</a>
         <a class="chip" href="manual.php">Revisi Scan Manual</a>
         <a class="chip" href="hr.php?m=timeoff">Persetujuan cuti</a>
@@ -119,7 +119,7 @@ if ($m === 'home'):
           <div class="meta"><b><?= h($r['pegawai_nama']) ?></b><small><?= h($r['izin_jenis_name']) ?> · <?= h(fmt_date($r['izin_tgl'])) ?> · <?= h($r['izin_catatan']) ?></small></div><?= decide_buttons($r, $csrf, $back) ?></div><?php endforeach; ?>
         <?php if (!$pending): ?><div class="muted">Tidak ada pengajuan yang menunggu.</div><?php endif; ?></div></div>
       <div class="card quick"><h2>Absensi</h2>
-        <a href="index.php"><?= hris_icon('finger') ?> Absensi (Fingerspot)</a>
+        <a href="dashboard.php"><?= hris_icon('finger') ?> Absensi (Fingerspot)</a>
         <a href="quick.php"><?= hris_icon('clock') ?> Input Cepat (Tidak scan / Dinas)</a>
         <a href="manual.php"><?= hris_icon('clock') ?> Revisi Scan Manual</a>
         <a href="missing.php"><?= hris_icon('clock') ?> Scan Tidak Lengkap</a>
@@ -234,7 +234,7 @@ elseif ($m === 'attendance'):
     $shown = array_filter($rows, function ($r) use ($filter) { return $filter === '' || ($filter === 'late' ? $r['late'] > 0 : $r['status'] === $filter); });
     $byPin = [];
     foreach (people() as $p) $byPin[$p['pegawai_pin']] = $p;
-    hris_header('Kehadiran', 'time', 'attendance', 'Manajemen Waktu', '<a class="btn" href="quick.php">Input Cepat</a> <a class="btn" href="index.php?date=' . h($date) . '">Absensi (Fingerspot)</a>'); ?>
+    hris_header('Kehadiran', 'time', 'attendance', 'Manajemen Waktu', '<a class="btn" href="quick.php">Input Cepat</a> <a class="btn" href="dashboard.php?date=' . h($date) . '">Absensi (Fingerspot)</a>'); ?>
   <form class="toolbar" method="get"><input type="hidden" name="m" value="attendance">
     <a class="btn small" href="hr.php?m=attendance&date=<?= date('Y-m-d', strtotime($date . ' -1 day')) ?>">‹</a>
     <input type="date" name="date" value="<?= h($date) ?>" max="<?= $today ?>" onchange="this.form.submit()">

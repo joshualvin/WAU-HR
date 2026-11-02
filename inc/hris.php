@@ -52,7 +52,7 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
   <span class="grow"></span>
   <form method="get" action="hr.php" class="search" style="margin-right:6px"><?= hris_icon('search') ?>
     <input type="hidden" name="m" value="employees"><input type="search" name="q" placeholder="Cari karyawan" style="width:200px"></form>
-  <a class="btn small" href="index.php" title="Layar absensi gaya Fingerspot"><?= hris_icon('finger') ?> Absensi (Fingerspot)</a>
+  <a class="btn small" href="dashboard.php" title="Layar absensi gaya Fingerspot"><?= hris_icon('finger') ?> Absensi (Fingerspot)</a>
   <span class="userchip"><span class="avatar"><?= h(initials($u['full_name'] ?: $u['username'])) ?></span>
     <span class="usertext"><b><?= h($u['full_name'] ?: $u['username']) ?></b><small><a href="logout.php">Keluar</a></small></span></span>
 </header>
@@ -63,7 +63,7 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
       <a class="item<?= $key === $module ? ' on' : '' ?>" href="<?= h($href) ?>"><?= hris_icon($m[1]) ?><span class="lbl"><?= h($m[0]) ?></span></a>
     <?php endforeach; ?>
     <hr class="sep">
-    <a class="item" href="index.php"><?= hris_icon('finger') ?><span class="lbl">Absensi (Fingerspot)</span></a>
+    <a class="item" href="dashboard.php"><?= hris_icon('finger') ?><span class="lbl">Absensi (Fingerspot)</span></a>
     <a class="item" href="quick.php"><?= hris_icon('clock') ?><span class="lbl">Input Cepat</span></a>
     <a class="item" href="manual.php"><?= hris_icon('clock') ?><span class="lbl">Revisi Scan Manual</span></a>
     <a class="item" href="portal.php"><?= hris_icon('portal') ?><span class="lbl">Portal Pegawai</span></a>

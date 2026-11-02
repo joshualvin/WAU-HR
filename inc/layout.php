@@ -21,7 +21,7 @@ function page_header($title, $active = '')
     global $CONFIG;
     $u = current_user();
     $sections = [
-        'Dashboard'    => ['index.php' => 'Dashboard'],
+        'Dashboard'    => ['dashboard.php' => 'Dashboard'],
         'Pegawai'      => ['employees.php' => 'Data Pegawai'],
         'Pengecualian' => ['quick.php' => 'Input Cepat (Tidak scan / Dinas)', 'manual.php' => 'Revisi Scan Manual', 'leave.php' => 'Izin, Terlambat, Cuti', 'quota.php' => 'Jatah Cuti',
                            'missing.php' => 'Scan Tidak Lengkap', 'scans.php?add=1#add' => 'Tambah Scan Manual'],

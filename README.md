@@ -28,7 +28,7 @@ The app adds two tables of its own to the database: `web_user` (sign-ins) and `w
                  'db_user' => 'root', 'db_pass' => 'YOUR_MYSQL_PASSWORD',
                  'timezone' => 'Asia/Jakarta', 'midday' => '12:00'];
    ```
-3. Open `http://192.168.20.102/WAU-HR/` from any computer on the network (HR area: `/WAU-HR/hr.php`, employee portal: `/WAU-HR/portal.php`).
+3. Open `http://192.168.20.102/WAU-HR/` from any computer on the network. It opens the HR area; the Fingerspot-style screens start at `/WAU-HR/dashboard.php` and the employee portal is `/WAU-HR/portal.php`.
 4. Sign in as **admin** with an empty password. Set a password later on the Users page if you want one.
 
 ## Notes
