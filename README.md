@@ -50,3 +50,13 @@ Scans are stored like the program stores cloud scans (sn = machine serial, att_i
 - **Portal Pegawai** (`portal.php`): employees clock in / clock out from the browser (live attendance, saved as a Tidak scan that counts straight away), sign in with their PIN and a login code HR creates on HR Overview ("Buat kode login", shown once). They see their attendance for the 21st–20th period, request leave, see their leave balance and profile, and can change their code.
 - A request is an `izin` row with `izin_status = 0` and `ket_status = 'Menunggu'` until HR decides (approved = 1; rejected keeps 0 with `ket_status = 'Ditolak'`). The app adds one table, `web_emp`, for portal login codes.
 
+## Penggajian (payroll and PPh 21)
+HR → Penggajian (admins only):
+- **Data gaji karyawan**: basic salary, fixed allowance, meal/transport per day present, PTKP status, NPWP/NIK and which BPJS programmes apply.
+- **Proses gaji**: calculates a 21st–20th period from attendance — salary + allowance, meal/transport × days present, overtime (1/173 of the monthly wage; work day 1.5× first hour then 2×, day off 2× / 3× / 4×), deductions for absent days without leave (pro-rata) and late minutes (optional rate), BPJS Kesehatan, JHT, JP, JKK, JKM, and PPh 21. **Simpan & terbitkan** publishes payslips to Portal Pegawai (Slip Gaji).
+- **PPh 21**: TER monthly rates (PP 58/2023) on gross income including company-paid JKK, JKM and BPJS Kesehatan; the period ending in December settles the year with the Pasal 17 rates (biaya jabatan 5% max 6 jt, JHT/JP contributions, PTKP) minus what was withheld in earlier saved periods.
+- **Riwayat & slip gaji**: printable payslips, the payroll report with bank account details, and the monthly PPh 21 data for e-Bupot 21.
+- **Pengaturan gaji**: BPJS rates and caps (the JP wage cap changes every March), JKK risk rate, overtime divisor and deduction rules.
+
+Rates and TER brackets are in `inc/payroll.php`; `php tests/payroll_test.php` checks them. Not covered: the 20% surcharge for employees without NPWP/NIK, and annualising for employees who join or leave mid-year.
+

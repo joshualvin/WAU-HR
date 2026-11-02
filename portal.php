@@ -3,6 +3,7 @@
 // Employees sign in with their PIN and the login code HR gives them (HR Overview → Kode login).
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/portal.php';
+require __DIR__ . '/inc/payroll.php';
 
 $page = get('p', 'home');
 $error = '';
@@ -115,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 list($pFrom, $pTo) = current_period();
-$tabs = ['home' => 'Beranda', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'profile' => 'Profil'];
+$tabs = ['home' => 'Beranda', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'slip' => 'Slip Gaji', 'profile' => 'Profil'];
 if (!isset($tabs[$page])) $page = 'home';
 portal_header($tabs[$page], $tabs, $page, $emp);
 if ($error) echo '<div class="p-alert err">' . h($error) . '</div>';
@@ -231,6 +232,21 @@ if ($page === 'home'):
       </div>
     <?php endforeach; ?>
     <?php if (!$reqs): ?><div class="p-item muted">Belum ada pengajuan.</div><?php endif; ?>
+  </div>
+
+<?php elseif ($page === 'slip'):
+    ensure_payroll_tables();
+    $slips = q('SELECT period_from, period_to, netto FROM web_payslip WHERE pegawai_id = ? AND published = 1 ORDER BY period_to DESC LIMIT 36', [$me['id']])->fetchAll(); ?>
+  <div class="p-list">
+    <?php foreach ($slips as $r): ?>
+      <div class="p-item">
+        <div class="p-date"><b><?= date('m', strtotime($r['period_to'])) ?></b><span><?= date('Y', strtotime($r['period_to'])) ?></span></div>
+        <div class="p-main"><div>Gaji <?= h(date('d-m-Y', strtotime($r['period_from']))) ?> – <?= h(date('d-m-Y', strtotime($r['period_to']))) ?></div>
+          <div class="muted">Take home pay <?= rupiah($r['netto']) ?></div></div>
+        <a class="p-btn small" target="_blank" href="payslip.php?<?= h(http_build_query(['to' => $r['period_to'], 'id' => $me['id']])) ?>">Lihat slip</a>
+      </div>
+    <?php endforeach; ?>
+    <?php if (!$slips): ?><div class="p-item muted">Belum ada slip gaji.</div><?php endif; ?>
   </div>
 
 <?php else: /* profile */
