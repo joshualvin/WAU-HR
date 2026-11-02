@@ -2,6 +2,9 @@
 // Public careers page (Halaman karir): open jobs and the application form with CV upload. No login.
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/recruit.php';
+require __DIR__ . '/inc/career.php';
+// with the careers site connected, applicants go there (its applications come back through Rekrutmen)
+if (career_enabled()) redirect(career_url() . '/');
 ensure_recruit_tables();
 
 $company = isset($CONFIG['company']) ? $CONFIG['company'] : 'Perusahaan';

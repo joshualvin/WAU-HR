@@ -17,4 +17,7 @@ return [
     'sync_db'   => 'fin_pro',
     'sync_user' => 'root',
     'sync_pass' => '',
+    // Careers site (cv-upload) link for Rekrutmen: its address and the HR_API_TOKEN set there
+    'career_url'   => 'https://career.wautama.com',
+    'career_token' => '',
 ];

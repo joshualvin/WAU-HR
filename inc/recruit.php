@@ -14,7 +14,10 @@ function ensure_recruit_tables()
         headcount INT NOT NULL DEFAULT 1,
         employment VARCHAR(30) NOT NULL DEFAULT 'Karyawan tetap',
         description TEXT NOT NULL,
+        responsibilities TEXT NULL,
         requirements TEXT NOT NULL,
+        dept_text VARCHAR(60) NOT NULL DEFAULT '',
+        loc_text VARCHAR(60) NOT NULL DEFAULT '',
         status VARCHAR(10) NOT NULL DEFAULT 'open',
         close_date DATE NULL,
         created_at DATETIME NOT NULL
@@ -32,6 +35,10 @@ function ensure_recruit_tables()
         rating TINYINT NOT NULL DEFAULT 0,
         interview_at DATETIME NULL,
         pegawai_id INT NULL,
+        ext_id VARCHAR(64) NULL,
+        cv_ext VARCHAR(64) NOT NULL DEFAULT '',
+        ai_score TINYINT NULL,
+        ai_note TEXT NULL,
         created_at DATETIME NOT NULL,
         updated_at DATETIME NOT NULL,
         KEY job (job_id, stage)
@@ -50,6 +57,27 @@ function ensure_recruit_tables()
         planned INT NOT NULL DEFAULT 0,
         PRIMARY KEY (tahun, pembagian2_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+    // columns added for the careers-site link
+    $add = ['web_job' => ['responsibilities' => 'TEXT NULL', 'dept_text' => "VARCHAR(60) NOT NULL DEFAULT ''", 'loc_text' => "VARCHAR(60) NOT NULL DEFAULT ''"],
+            'web_candidate' => ['ext_id' => 'VARCHAR(64) NULL', 'cv_ext' => "VARCHAR(64) NOT NULL DEFAULT ''", 'ai_score' => 'TINYINT NULL', 'ai_note' => 'TEXT NULL']];
+    foreach ($add as $t => $cols) {
+        $have = q('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?', [$t])->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($cols as $c => $def) if (!in_array($c, $have, true)) db()->exec("ALTER TABLE $t ADD $c $def");
+    }
+}
+
+/** Candidates whose position matches no job here (careers site "Other", or a removed job) have job_id 0. */
+function general_job()
+{
+    return ['id' => 0, 'title' => 'Lamaran umum', 'jab' => '', 'dep' => '', 'kan' => '', 'pembagian1_id' => 0, 'pembagian2_id' => 0, 'pembagian3_id' => 0,
+            'employment' => '', 'headcount' => PHP_INT_MAX, 'status' => 'closed', 'close_date' => null];
+}
+
+function score_pill($score)
+{
+    if ($score === null || $score === '') return '';
+    $cls = $score >= 75 ? 'ok' : ($score >= 50 ? 'warn' : 'grey');
+    return '<span class="pill ' . $cls . '" title="Skor kecocokan AI dari situs karir">AI ' . (int)$score . '</span>';
 }
 
 function stages()
