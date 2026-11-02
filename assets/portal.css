@@ -33,6 +33,8 @@ h1 { font-size: 20px; margin: 0 0 6px; } h2 { font-size: 15px; margin: 18px 0 8p
 .p-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 8px; }
 .p-stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 .p-stat b { display: block; font-size: 22px; } .p-stat span { color: var(--muted); font-size: 12px; }
+.p-clock { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.p-time { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .p-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
 .p-btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--text); font: inherit; cursor: pointer; }

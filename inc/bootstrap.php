@@ -171,11 +171,18 @@ function check_csrf()
     }
 }
 
-function audit($action, $detail)
+/** Who is acting: the admin user, or 'portal:PIN' for an employee signed in to the Portal Pegawai. */
+function actor()
 {
     $u = current_user();
+    if ($u) return $u['username'];
+    return isset($_SESSION['emp']) ? 'portal:' . $_SESSION['emp']['pin'] : '-';
+}
+
+function audit($action, $detail)
+{
     q('INSERT INTO web_log (created_at, username, action, detail) VALUES (?, ?, ?, ?)',
-        [date('Y-m-d H:i:s'), $u ? $u['username'] : '-', $action, mb_substr($detail, 0, 500)]);
+        [date('Y-m-d H:i:s'), actor(), $action, mb_substr($detail, 0, 500)]);
 }
 
 // ---------- Fingerspot lookups ----------
@@ -284,7 +291,7 @@ function add_manual_scan($pegawaiId, $date, $time, $jenis, $katId, $note, $appro
                              cuti_n_id, izin_ket_lain, izin_noscan_time, kat_izin_id, ket_status)
            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NULL)', [
             $pegawaiId, next_izin_seq($pegawaiId, $date, $jenis), date('Y-m-d'), $date, $jenis, $note,
-            $approved ? 1 : 0, 'Web: ' . current_user()['username'], $time, (int)$katId,
+            $approved ? 1 : 0, 'Web: ' . actor(), $time, (int)$katId,
         ]);
         if ($approved) put_scan_row($emp['pegawai_pin'], $date, $time, $jenis);
         $pdo->commit();
@@ -382,7 +389,7 @@ function revise_manual_scan($key, $date, $jenis, $time, $katId, $note)
                              cuti_n_id, izin_ket_lain, izin_noscan_time, kat_izin_id, ket_status)
            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)', [
             $row['pegawai_id'], next_izin_seq($row['pegawai_id'], $date, $jenis), $row['izin_tgl_pengajuan'], $date, $jenis, $note,
-            $row['izin_status'], 'Web: ' . current_user()['username'], $time, (int)$katId, $row['ket_status'],
+            $row['izin_status'], 'Web: ' . actor(), $time, (int)$katId, $row['ket_status'],
         ]);
         if ((int)$row['izin_status'] === 1) put_scan_row($pin, $date, $time, $jenis);
         $pdo->commit();

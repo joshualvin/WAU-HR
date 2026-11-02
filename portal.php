@@ -86,6 +86,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('portal.php?p=timeoff');
         }
         $page = 'timeoff';
+    } elseif ($action === 'clock') {
+        // Live attendance: saved like a Tidak scan (izin 100/101 + att_log), approved straight away
+        $jenis = post('which') === 'out' ? 101 : 100;
+        $err = add_manual_scan($me['id'], date('Y-m-d'), date('H:i'), $jenis, 0, 'Live attendance (portal)', true);
+        flash($err ?: ($jenis === 100 ? 'Clock in tercatat ' : 'Clock out tercatat ') . date('H:i') . '.', $err ? 'err' : 'ok');
+        redirect('portal.php');
     } elseif ($action === 'cancel') {
         $key = leave_key_from_post();
         $row = find_leave($key);
@@ -135,6 +141,14 @@ if ($page === 'home'):
       <div><span class="muted">Pulang</span><b><?= $t && $t['last'] ? h($t['last']) : '--:--' ?></b></div>
     </div>
   </div>
+  <div class="p-card p-clock">
+    <div><div class="muted">Live attendance</div><div class="p-time" id="liveclock"><?= date('H:i:s') ?></div></div>
+    <form method="post" class="p-actions" style="margin:0"><?= csrf_field() ?><input type="hidden" name="action" value="clock">
+      <button class="p-btn primary" name="which" value="in">Clock in</button>
+      <button class="p-btn" name="which" value="out">Clock out</button></form>
+  </div>
+  <script>setInterval(function () { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    document.getElementById('liveclock').textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }, 1000);</script>
   <div class="p-grid">
     <div class="p-stat"><b><?= $c['ok'] + $c['incomplete'] ?></b><span>Hadir</span></div>
     <div class="p-stat"><b><?= $c['late'] ?></b><span>Terlambat</span></div>
