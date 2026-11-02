@@ -17,6 +17,9 @@ return [
     'sync_db'   => 'fin_pro',
     'sync_user' => 'root',
     'sync_pass' => '',
+    // Optional, printed on the bukti potong PPh 21: company NPWP and the name of the person who signs it
+    'company_npwp' => '',
+    'tax_signer'   => '',
     // Careers site (cv-upload) link for Rekrutmen: its address and the HR_API_TOKEN set there
     'career_url'   => 'https://career.wautama.com',
     'career_token' => '',

@@ -40,6 +40,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit('payroll_unpublish', $to);
         flash('Slip gaji periode ini ditarik dari Portal Pegawai.');
         redirect('payroll.php?p=slips');
+    } elseif ($action === 'bonus_save') {
+        $tiers = bonus_tiers();
+        $n = 0;
+        foreach (isset($_POST['b']) ? (array)$_POST['b'] : [] as $id => $v) {
+            $num = function ($k) use ($v) { return isset($v[$k]) ? (int)preg_replace('/\D/', '', $v[$k]) : 0; };
+            list($sb) = sales_bonus($num('target'), $num('sales'), $tiers);
+            if (!$num('target') && !$num('sales') && !$num('other_bonus')) { q('DELETE FROM web_bonus WHERE period_to = ? AND pegawai_id = ?', [$to, (int)$id]); continue; }
+            q('REPLACE INTO web_bonus (period_to, pegawai_id, target, sales, sales_bonus, other_bonus, note, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [$to, (int)$id, $num('target'), $num('sales'), $sb, $num('other_bonus'), mb_substr(trim(isset($v['note']) ? $v['note'] : ''), 0, 200), actor()]);
+            $n++;
+        }
+        audit('bonus_save', "$to: $n karyawan");
+        flash("Bonus $n karyawan disimpan; ikut dihitung saat gaji periode ini disimpan.");
+        redirect('payroll.php?' . http_build_query(['p' => 'bonus', 'from' => $from, 'to' => $to]));
+    } elseif ($action === 'tier_save') {
+        foreach (isset($_POST['t']) ? (array)$_POST['t'] : [] as $id => $t) {
+            if (trim($t['min_pct']) === '') q('DELETE FROM web_bonus_tier WHERE id = ?', [(int)$id]);
+            else q('UPDATE web_bonus_tier SET min_pct = ?, rate = ?, fixed = ? WHERE id = ?', [(float)str_replace(',', '.', $t['min_pct']), (float)str_replace(',', '.', $t['rate']), (int)preg_replace('/\D/', '', $t['fixed']), (int)$id]);
+        }
+        if (post('new_min') !== '') q('INSERT INTO web_bonus_tier (min_pct, rate, fixed) VALUES (?, ?, ?)', [(float)str_replace(',', '.', post('new_min')), (float)str_replace(',', '.', post('new_rate')), (int)preg_replace('/\D/', '', post('new_fixed'))]);
+        audit('bonus_tiers', 'diubah');
+        flash('Skema bonus disimpan. Simpan ulang bonus periode yang sudah diisi agar ikut skema baru.');
+        redirect('payroll.php?' . http_build_query(['p' => 'bonus', 'from' => $from, 'to' => $to]));
+    } elseif ($action === 'loan_add' || $action === 'loan_approve') {
+        $amount = (int)preg_replace('/\D/', '', post('jumlah'));
+        $inst = (int)preg_replace('/\D/', '', post('cicilan'));
+        $back = 'payroll.php?p=loans';
+        if ($amount <= 0 || $inst <= 0 || $inst > $amount) { flash('Isi jumlah kasbon dan cicilan per periode (tidak lebih dari jumlah).', 'err'); redirect($back); }
+        if ($action === 'loan_add') {
+            $emp = employee(post('pegawai_id'));
+            if (!$emp || !valid_date(post('tgl'))) { flash('Pilih karyawan dan tanggal.', 'err'); redirect($back); }
+            q('INSERT INTO web_loan (pegawai_id, tgl, jumlah, cicilan, keterangan, status, created_at, decided_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [$emp['pegawai_id'], post('tgl'), $amount, $inst, post('keterangan'), LOAN_ACTIVE, date('Y-m-d H:i:s'), actor()]);
+            audit('loan_add', "{$emp['pegawai_nama']} $amount");
+        } else {
+            q('UPDATE web_loan SET jumlah = ?, cicilan = ?, tgl = ?, status = ?, decided_by = ? WHERE id = ? AND status = ?',
+                [$amount, $inst, valid_date(post('tgl')) ? post('tgl') : date('Y-m-d'), LOAN_ACTIVE, actor(), (int)post('id'), LOAN_PENDING]);
+            audit('loan_approve', '#' . (int)post('id') . " $amount");
+        }
+        flash('Kasbon dicatat; cicilan dipotong mulai gaji periode yang berakhir setelah tanggal kasbon.');
+        redirect($back);
+    } elseif ($action === 'loan_reject') {
+        q('UPDATE web_loan SET status = ?, decided_by = ? WHERE id = ? AND status = ?', [LOAN_REJECTED, actor(), (int)post('id'), LOAN_PENDING]);
+        audit('loan_reject', '#' . (int)post('id'));
+        flash('Pengajuan kasbon ditolak.');
+        redirect('payroll.php?p=loans');
+    } elseif ($action === 'loan_pay') {
+        $loan = q("SELECT * FROM web_loan WHERE id = ? AND status = 'active'", [(int)post('id')])->fetch();
+        $amount = (int)preg_replace('/\D/', '', post('jumlah'));
+        if ($loan && $amount > 0) {
+            $amount = min($amount, $loan['jumlah'] - loan_repaid($loan['id']));
+            q('INSERT INTO web_loan_pay (loan_id, period_to, tgl, jumlah, note) VALUES (?, NULL, ?, ?, ?)', [$loan['id'], valid_date(post('tgl')) ? post('tgl') : date('Y-m-d'), $amount, 'Bayar tunai']);
+            refresh_loan_status();
+            audit('loan_pay', "#{$loan['id']} $amount");
+            flash('Pembayaran ' . rupiah($amount) . ' dicatat.');
+        }
+        redirect('payroll.php?p=loans&id=' . (int)post('id'));
+    } elseif ($action === 'thr_create') {
+        if (post('name') === '' || !valid_date(post('holiday')) || !valid_date(post('pay_date'))) { flash('Isi nama, tanggal hari raya dan tanggal bayar.', 'err'); redirect('payroll.php?p=thr'); }
+        q('INSERT INTO web_thr (name, holiday, pay_date, created_at, created_by) VALUES (?, ?, ?, ?, ?)', [post('name'), post('holiday'), post('pay_date'), date('Y-m-d H:i:s'), actor()]);
+        $thrId = (int)db()->lastInsertId();
+        save_thr($thrId, calculate_thr(post('holiday'), post('pay_date')));
+        audit('thr_create', post('name'));
+        flash('THR dihitung. Periksa, ubah jumlah bila perlu, lalu terbitkan.');
+        redirect('payroll.php?p=thr&id=' . $thrId);
+    } elseif (in_array($action, ['thr_recalc', 'thr_publish', 'thr_unpublish', 'thr_delete'], true)) {
+        $thr = q('SELECT * FROM web_thr WHERE id = ?', [(int)post('id')])->fetch();
+        if (!$thr) redirect('payroll.php?p=thr');
+        if ($action === 'thr_recalc' && !$thr['published']) {
+            $over = [];
+            $rule = q('SELECT pegawai_id, rule_amount FROM web_thr_slip WHERE thr_id = ?', [$thr['id']])->fetchAll(PDO::FETCH_KEY_PAIR);
+            foreach (isset($_POST['a']) ? (array)$_POST['a'] : [] as $id => $v) {
+                $v = (int)preg_replace('/\D/', '', $v);
+                if (!isset($rule[$id]) || $v !== (int)$rule[$id]) $over[(int)$id] = $v;   // keep only amounts HR changed
+            }
+            save_thr($thr['id'], calculate_thr($thr['holiday'], $thr['pay_date'], $over));
+            flash('THR dihitung ulang.');
+        } elseif ($action === 'thr_publish' || $action === 'thr_unpublish') {
+            q('UPDATE web_thr SET published = ? WHERE id = ?', [$action === 'thr_publish' ? 1 : 0, $thr['id']]);
+            flash($action === 'thr_publish' ? 'Slip THR diterbitkan ke Portal Pegawai.' : 'Slip THR ditarik dari Portal Pegawai.');
+        } elseif ($action === 'thr_delete' && !$thr['published']) {
+            q('DELETE FROM web_thr_slip WHERE thr_id = ?', [$thr['id']]);
+            q('DELETE FROM web_thr WHERE id = ?', [$thr['id']]);
+            flash('THR dihapus.');
+            audit('thr_delete', $thr['name']);
+            redirect('payroll.php?p=thr');
+        }
+        audit($action, $thr['name']);
+        redirect('payroll.php?p=thr&id=' . $thr['id']);
     } elseif ($action === 'setup') {
         $n = 0;
         foreach (isset($_POST['e']) ? (array)$_POST['e'] : [] as $id => $v) {
@@ -122,18 +211,19 @@ if ($p === 'run'):
     <div class="counter"><b><?= rupiah($tot['co']) ?></b><span>BPJS dibayar perusahaan</span></div>
   </div>
   <div class="tablecard"><div class="tablescroll"><table>
-    <thead><tr><th>Nama karyawan</th><th>PTKP</th><th class="num">Hadir</th><th class="num">Gaji + tunjangan</th><th class="num">Uang harian</th><th class="num">Lembur</th>
-      <th class="num">Potongan absensi</th><th class="num">BPJS karyawan</th><th class="num">PPh 21</th><th class="num">Take home pay</th><th class="actions">Slip</th></tr></thead><tbody>
+    <thead><tr><th>Nama karyawan</th><th>PTKP</th><th class="num">Hadir</th><th class="num">Gaji + tunjangan</th><th class="num">Uang harian</th><th class="num">Lembur</th><th class="num">Bonus</th>
+      <th class="num">Potongan absensi</th><th class="num">Kasbon</th><th class="num">BPJS karyawan</th><th class="num">PPh 21</th><th class="num">Take home pay</th><th class="actions">Slip</th></tr></thead><tbody>
     <?php foreach ($rows as $r):
         $e = $r['earnings']; $d = $r['deductions'];
         $harian = 0; foreach ($e as $k => $v) if (strpos($k, 'Uang makan') === 0) $harian = $v;
         $absensi = 0; foreach ($d as $k => $v) if (strpos($k, 'Potongan') === 0) $absensi += $v;
+        $bonus = 0; foreach ($e as $k => $v) if (strpos($k, 'Bonus') === 0) $bonus += $v;
         $bpjsEmp = (isset($d['BPJS Kesehatan (1%)']) ? $d['BPJS Kesehatan (1%)'] : 0) + (isset($d['BPJS JHT (2%)']) ? $d['BPJS JHT (2%)'] : 0) + (isset($d['BPJS JP (1%)']) ? $d['BPJS JP (1%)'] : 0); ?>
       <tr><td><div class="who"><span class="avatar"><?= h(initials($r['name'])) ?></span><div><b><?= h($r['name']) ?></b><small>PIN <?= h($r['pin']) ?></small></div></div></td>
         <td><?= h($r['ptkp']) ?></td><td class="num"><?= $r['counts']['present'] ?>/<?= $r['counts']['workdays'] ?></td>
         <td class="num"><?= rupiah((isset($e['Gaji pokok']) ? $e['Gaji pokok'] : 0) + (isset($e['Tunjangan tetap']) ? $e['Tunjangan tetap'] : 0)) ?></td>
-        <td class="num"><?= $harian ? rupiah($harian) : '' ?></td><td class="num"><?= isset($e['Lembur']) ? rupiah($e['Lembur']) : '' ?></td>
-        <td class="num red"><?= $absensi ? rupiah($absensi) : '' ?></td><td class="num"><?= rupiah($bpjsEmp) ?></td>
+        <td class="num"><?= $harian ? rupiah($harian) : '' ?></td><td class="num"><?= isset($e['Lembur']) ? rupiah($e['Lembur']) : '' ?></td><td class="num"><?= $bonus ? rupiah($bonus) : '' ?></td>
+        <td class="num red"><?= $absensi ? rupiah($absensi) : '' ?></td><td class="num"><?= $r['kasbon'] ? rupiah($r['kasbon']) : '' ?></td><td class="num"><?= rupiah($bpjsEmp) ?></td>
         <td class="num" title="<?= h($r['pph21_note']) ?>"><?= rupiah($r['pph21']) ?></td><td class="num"><b><?= rupiah($r['netto']) ?></b></td>
         <td class="actions"><?php if ($saved['n']): ?><a class="btn small" href="payslip.php?<?= h(http_build_query(['to' => $to, 'id' => $r['pegawai_id']])) ?>" target="_blank">Lihat</a><?php endif; ?></td></tr>
     <?php endforeach; ?>
@@ -192,6 +282,152 @@ elseif ($p === 'reimburse'):
     <?php endforeach; ?>
     </tbody></table></div><?php if (!$rows): ?><div class="empty"><strong>Tidak ada klaim</strong>Karyawan mengirim klaim di Portal Pegawai.</div><?php endif; ?></div>
   <p class="muted">Klaim yang disetujui ikut dibayar saat gaji periode berikutnya disimpan, sebagai pendapatan di luar penghasilan bruto PPh 21.</p>
+<?php
+// ======================================================================= Bonus penjualan
+elseif ($p === 'bonus'):
+    $tiers = bonus_tiers();
+    $rows = bonuses_for_period($to);
+    $pays = pay_data();
+    $tot = 0;
+    hris_header('Bonus penjualan', 'payroll', 'payroll.php?p=bonus', 'Penggajian'); ?>
+  <?= $periodPicker('bonus') ?>
+  <form method="post"><?= $csrf ?><input type="hidden" name="action" value="bonus_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Nama karyawan</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th>Keterangan</th></tr></thead><tbody>
+    <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; if (empty($pays[$id])) continue;
+        $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => ''];
+        list(, $pct) = sales_bonus($v['target'], $v['sales'], $tiers); $tot += $v['sales_bonus'] + $v['other_bonus'];
+        $money = function ($k) use ($v, $id) { return '<input type="text" inputmode="numeric" name="b[' . $id . '][' . $k . ']" value="' . ($v[$k] ? h(number_format($v[$k], 0, ',', '.')) : '') . '" style="width:140px;text-align:right" placeholder="0">'; }; ?>
+      <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span></td>
+        <td><?= $money('target') ?></td><td><?= $money('sales') ?></td><td class="num"><?= $v['target'] ? str_replace('.', ',', $pct) . '%' : '' ?></td>
+        <td class="num"><b><?= $v['sales_bonus'] ? rupiah($v['sales_bonus']) : '' ?></b></td><td><?= $money('other_bonus') ?></td>
+        <td><input type="text" name="b[<?= $id ?>][note]" value="<?= h($v['note']) ?>" maxlength="200" style="width:180px"></td></tr>
+    <?php endforeach; ?>
+    </tbody></table></div></div>
+  <div class="formfoot"><span class="muted" style="margin-right:auto">Total bonus periode ini: <b><?= rupiah($tot) ?></b>. Bonus termasuk penghasilan bruto PPh 21 bulan ini. Hanya karyawan yang punya data gaji yang tampil.</span>
+    <button class="btn primary">Simpan bonus</button></div></form>
+  <form method="post" class="section" style="margin-top:16px"><?= $csrf ?><input type="hidden" name="action" value="tier_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
+    <h2>Skema bonus penjualan</h2>
+    <small class="muted">Tingkat tertinggi yang tercapai berlaku: bonus = % dari realisasi penjualan + nominal tetap. Kosongkan "capaian minimal" untuk menghapus baris.</small>
+    <table><thead><tr><th>Capaian minimal (% target)</th><th>Bonus (% dari penjualan)</th><th>Nominal tetap (Rp)</th></tr></thead><tbody>
+      <?php foreach ($tiers as $t): ?><tr><td><input type="text" name="t[<?= (int)$t['id'] ?>][min_pct]" value="<?= h(rtrim(rtrim($t['min_pct'], '0'), '.')) ?>" style="width:90px"></td>
+        <td><input type="text" name="t[<?= (int)$t['id'] ?>][rate]" value="<?= h(rtrim(rtrim($t['rate'], '0'), '.')) ?>" style="width:90px"></td>
+        <td><input type="text" name="t[<?= (int)$t['id'] ?>][fixed]" value="<?= $t['fixed'] ? h(number_format($t['fixed'], 0, ',', '.')) : '' ?>" style="width:130px"></td></tr><?php endforeach; ?>
+      <tr><td><input type="text" name="new_min" placeholder="mis. 150" style="width:90px"></td><td><input type="text" name="new_rate" style="width:90px"></td><td><input type="text" name="new_fixed" style="width:130px"></td></tr>
+    </tbody></table>
+    <div class="formfoot"><button class="btn">Simpan skema</button></div></form>
+<?php
+// ======================================================================= Kasbon
+elseif ($p === 'loans'):
+    $state = get('s', 'open');
+    $where = $state === 'open' ? "l.status IN ('pending', 'active')" : ($state === 'paid' ? "l.status = 'paid'" : "l.status = 'rejected'");
+    $loans = q("SELECT l.*, p.pegawai_nama, p.pegawai_pin, (SELECT COALESCE(SUM(jumlah), 0) FROM web_loan_pay x WHERE x.loan_id = l.id) repaid
+                FROM web_loan l JOIN pegawai p ON p.pegawai_id = l.pegawai_id WHERE $where ORDER BY l.status = 'pending' DESC, l.tgl DESC")->fetchAll();
+    $sel = get('id') !== '' ? q('SELECT l.*, p.pegawai_nama FROM web_loan l JOIN pegawai p ON p.pegawai_id = l.pegawai_id WHERE l.id = ?', [(int)get('id')])->fetch() : null;
+    $out = q("SELECT COUNT(*) n, COALESCE(SUM(l.jumlah - (SELECT COALESCE(SUM(jumlah), 0) FROM web_loan_pay x WHERE x.loan_id = l.id)), 0) t FROM web_loan l WHERE status = 'active'")->fetch();
+    hris_header('Kasbon', 'payroll', 'payroll.php?p=loans', 'Penggajian'); ?>
+  <div class="counters" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <?php foreach (['open' => 'Menunggu & berjalan', 'paid' => 'Lunas', 'rejected' => 'Ditolak'] as $k => $label): ?><a class="counter<?= $state === $k ? ' on' : '' ?>" href="payroll.php?p=loans&s=<?= $k ?>"><b><?= $k === 'open' ? rupiah($out['t']) : '' ?></b><span><?= $label ?><?= $k === 'open' ? ' · sisa ' . (int)$out['n'] . ' kasbon' : '' ?></span></a><?php endforeach; ?>
+  </div>
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Nama karyawan</th><th>Tanggal</th><th class="num">Jumlah</th><th class="num">Cicilan / periode</th><th class="num">Sudah dibayar</th><th class="num">Sisa</th><th>Keterangan</th><th>Status</th><th class="actions">Aksi</th></tr></thead><tbody>
+    <?php foreach ($loans as $l): ?>
+      <tr><td><b><?= h($l['pegawai_nama']) ?></b> <span class="muted">PIN <?= h($l['pegawai_pin']) ?></span></td><td><?= h(date('d-m-Y', strtotime($l['tgl']))) ?></td>
+        <td class="num"><?= rupiah($l['jumlah']) ?></td><td class="num"><?= rupiah($l['cicilan']) ?> <span class="muted">(<?= (int)ceil($l['jumlah'] / max(1, $l['cicilan'])) ?>×)</span></td>
+        <td class="num"><?= rupiah($l['repaid']) ?></td><td class="num"><b><?= rupiah($l['jumlah'] - $l['repaid']) ?></b></td><td><?= h($l['keterangan']) ?></td><td><?= loan_badge($l['status']) ?></td>
+        <td class="actions" style="white-space:nowrap"><?php if ($l['status'] === LOAN_PENDING): ?>
+          <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="loan_approve"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
+            <input type="hidden" name="tgl" value="<?= date('Y-m-d') ?>"><input type="text" name="jumlah" value="<?= h(number_format($l['jumlah'], 0, ',', '.')) ?>" style="width:110px" title="Jumlah disetujui">
+            <input type="text" name="cicilan" value="<?= h(number_format($l['cicilan'], 0, ',', '.')) ?>" style="width:100px" title="Cicilan per periode"><button class="btn small primary">Setujui</button></form>
+          <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="loan_reject"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="btn small outline">Tolak</button></form>
+        <?php else: ?><a class="btn small" href="payroll.php?p=loans&s=<?= h($state) ?>&id=<?= (int)$l['id'] ?>">Riwayat</a><?php endif; ?></td></tr>
+    <?php endforeach; ?>
+    </tbody></table></div><?php if (!$loans): ?><div class="empty"><strong>Tidak ada kasbon</strong>Karyawan dapat mengajukan kasbon di Portal Pegawai, atau tambahkan di bawah.</div><?php endif; ?></div>
+  <?php if ($sel): $pays = q('SELECT * FROM web_loan_pay WHERE loan_id = ? ORDER BY tgl, id', [$sel['id']])->fetchAll(); ?>
+  <div class="section" style="margin-top:16px"><h2>Kasbon #<?= (int)$sel['id'] ?> · <?= h($sel['pegawai_nama']) ?> · <?= rupiah($sel['jumlah']) ?></h2>
+    <table><thead><tr><th>Tanggal</th><th>Cara</th><th class="num">Jumlah</th></tr></thead><tbody>
+      <?php foreach ($pays as $x): ?><tr><td><?= h(date('d-m-Y', strtotime($x['tgl']))) ?></td><td><?= $x['period_to'] ? 'Potong gaji s/d ' . h(date('d-m-Y', strtotime($x['period_to']))) : h($x['note']) ?></td><td class="num"><?= rupiah($x['jumlah']) ?></td></tr><?php endforeach; ?>
+      <?php if (!$pays): ?><tr><td colspan="3" class="muted">Belum ada pembayaran.</td></tr><?php endif; ?></tbody></table>
+    <?php if ($sel['status'] === LOAN_ACTIVE): ?><form method="post" class="toolbar"><?= $csrf ?><input type="hidden" name="action" value="loan_pay"><input type="hidden" name="id" value="<?= (int)$sel['id'] ?>">
+      <span>Catat pembayaran tunai</span><input type="date" name="tgl" value="<?= date('Y-m-d') ?>"><input type="text" name="jumlah" inputmode="numeric" placeholder="Jumlah" style="width:130px"><button class="btn">Catat</button></form><?php endif; ?></div>
+  <?php endif; ?>
+  <form method="post" class="section" style="margin-top:16px"><?= $csrf ?><input type="hidden" name="action" value="loan_add">
+    <h2>Tambah kasbon</h2>
+    <div class="row2"><label class="field"><span>Karyawan</span><select name="pegawai_id" required><option value="">Pilih…</option><?php foreach (employees(true) as $e): ?><option value="<?= (int)$e['pegawai_id'] ?>"><?= h($e['pegawai_nama']) ?> (<?= h($e['pegawai_pin']) ?>)</option><?php endforeach; ?></select></label>
+      <label class="field"><span>Tanggal diberikan</span><input type="date" name="tgl" required value="<?= date('Y-m-d') ?>"></label>
+      <label class="field"><span>Jumlah (Rp)</span><input type="text" name="jumlah" inputmode="numeric" required></label>
+      <label class="field"><span>Cicilan per periode gaji (Rp)</span><input type="text" name="cicilan" inputmode="numeric" required></label></div>
+    <label class="field"><span>Keterangan</span><input type="text" name="keterangan" maxlength="255"></label>
+    <div class="formfoot"><button class="btn primary">Simpan kasbon</button></div></form>
+<?php
+// ======================================================================= THR
+elseif ($p === 'thr'):
+    $thr = get('id') !== '' ? q('SELECT * FROM web_thr WHERE id = ?', [(int)get('id')])->fetch() : null;
+    if ($thr):
+        $slips = q('SELECT s.*, p.pegawai_nama, p.pegawai_pin, p.tgl_mulai_kerja FROM web_thr_slip s JOIN pegawai p ON p.pegawai_id = s.pegawai_id WHERE s.thr_id = ? ORDER BY p.pegawai_nama', [$thr['id']])->fetchAll();
+        $tot = ['a' => array_sum(array_column($slips, 'amount')), 't' => array_sum(array_column($slips, 'pph21')), 'n' => array_sum(array_column($slips, 'netto'))];
+        $lock = (bool)$thr['published'];
+        hris_header($thr['name'], 'payroll', 'payroll.php?p=thr', '<a href="payroll.php?p=thr">THR</a>',
+            '<form method="post" class="inline">' . $csrf . '<input type="hidden" name="id" value="' . (int)$thr['id'] . '">'
+            . ($lock ? '<button class="btn" name="action" value="thr_unpublish">Tarik dari portal</button>'
+                     : '<button class="btn" name="action" value="thr_delete" onclick="return confirm(\'Hapus THR ini?\')">Hapus</button> <button class="btn primary" name="action" value="thr_publish" onclick="return confirm(\'Terbitkan slip THR ke Portal Pegawai?\')">Terbitkan</button>')
+            . '</form>'); ?>
+  <p class="muted" style="margin:0 0 12px">Hari raya <?= h(fmt_date($thr['holiday'])) ?> · dibayar <?= h(fmt_date($thr['pay_date'])) ?> (paling lambat 7 hari sebelum hari raya) ·
+    <span class="pill <?= $lock ? 'ok' : 'grey' ?>"><?= $lock ? 'Diterbitkan' : 'Draf' ?></span></p>
+  <div class="counters" style="grid-template-columns:repeat(4,minmax(0,1fr))"><div class="counter"><b><?= count($slips) ?></b><span>Karyawan</span></div>
+    <div class="counter"><b><?= rupiah($tot['a']) ?></b><span>Total THR</span></div><div class="counter"><b><?= rupiah($tot['t']) ?></b><span>PPh 21</span></div><div class="counter"><b><?= rupiah($tot['n']) ?></b><span>Dibayarkan</span></div></div>
+  <form method="post"><?= $csrf ?><input type="hidden" name="action" value="thr_recalc"><input type="hidden" name="id" value="<?= (int)$thr['id'] ?>">
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Nama karyawan</th><th>Mulai bekerja</th><th class="num">Masa kerja</th><th class="num">Upah sebulan</th><th class="num">THR sesuai aturan</th><th>THR dibayar</th><th class="num">PPh 21</th><th class="num">Diterima</th><th>Catatan</th><th class="actions">Slip</th></tr></thead><tbody>
+    <?php foreach ($slips as $s): ?>
+      <tr><td><b><?= h($s['pegawai_nama']) ?></b> <span class="muted"><?= h($s['pegawai_pin']) ?></span></td><td><?= $s['tgl_mulai_kerja'] ? h(date('d-m-Y', strtotime($s['tgl_mulai_kerja']))) : '—' ?></td>
+        <td class="num"><?= (int)$s['months'] >= 12 ? floor($s['months'] / 12) . ' th ' . ($s['months'] % 12) . ' bln' : (int)$s['months'] . ' bln' ?></td><td class="num"><?= rupiah($s['upah']) ?></td>
+        <td class="num"><?= rupiah($s['rule_amount']) ?></td>
+        <td><?php if ($lock): ?><b><?= rupiah($s['amount']) ?></b><?php else: ?><input type="text" name="a[<?= (int)$s['pegawai_id'] ?>]" value="<?= h(number_format($s['amount'], 0, ',', '.')) ?>" style="width:130px;text-align:right<?= $s['amount'] != $s['rule_amount'] ? ';border-color:var(--warn)' : '' ?>"><?php endif; ?></td>
+        <td class="num"><?= rupiah($s['pph21']) ?></td><td class="num"><b><?= rupiah($s['netto']) ?></b></td><td class="muted" style="font-size:12px"><?= h($s['note']) ?></td>
+        <td class="actions"><?php if ($s['amount']): ?><a class="btn small" target="_blank" href="payslip.php?<?= h(http_build_query(['thr' => $thr['id'], 'id' => $s['pegawai_id']])) ?>">Lihat</a><?php endif; ?></td></tr>
+    <?php endforeach; ?>
+    </tbody></table></div><?php if (!$slips): ?><div class="empty"><strong>Tidak ada karyawan</strong>Hanya karyawan aktif dengan data gaji yang dihitung.</div><?php endif; ?></div>
+  <?php if (!$lock): ?><div class="formfoot"><span class="muted" style="margin-right:auto">Ubah "THR dibayar" bila perusahaan memberi lebih dari aturan, lalu hitung ulang. Data gaji dan tanggal mulai kerja terbaru ikut dipakai.</span><button class="btn primary">Hitung ulang</button></div><?php endif; ?>
+  </form>
+  <?php else:
+    $runs = q('SELECT t.*, COUNT(s.pegawai_id) n, COALESCE(SUM(s.amount), 0) total, COALESCE(SUM(s.pph21), 0) tax FROM web_thr t LEFT JOIN web_thr_slip s ON s.thr_id = t.id GROUP BY t.id ORDER BY t.pay_date DESC')->fetchAll();
+    hris_header('THR', 'payroll', 'payroll.php?p=thr', 'Penggajian'); ?>
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>THR</th><th>Hari raya</th><th>Dibayar</th><th class="num">Karyawan</th><th class="num">Total THR</th><th class="num">PPh 21</th><th>Status</th><th class="actions">Aksi</th></tr></thead><tbody>
+    <?php foreach ($runs as $r): ?><tr><td><b><?= h($r['name']) ?></b></td><td><?= h(date('d-m-Y', strtotime($r['holiday']))) ?></td><td><?= h(date('d-m-Y', strtotime($r['pay_date']))) ?></td>
+      <td class="num"><?= (int)$r['n'] ?></td><td class="num"><?= rupiah($r['total']) ?></td><td class="num"><?= rupiah($r['tax']) ?></td>
+      <td><span class="pill <?= $r['published'] ? 'ok' : 'grey' ?>"><?= $r['published'] ? 'Diterbitkan' : 'Draf' ?></span></td><td class="actions"><a class="btn small" href="payroll.php?p=thr&id=<?= (int)$r['id'] ?>">Buka</a></td></tr><?php endforeach; ?>
+    </tbody></table></div><?php if (!$runs): ?><div class="empty"><strong>Belum ada THR</strong>Buat perhitungan THR di bawah.</div><?php endif; ?></div>
+  <form method="post" class="section" style="margin-top:16px"><?= $csrf ?><input type="hidden" name="action" value="thr_create">
+    <h2>Hitung THR</h2>
+    <label class="field"><span>Nama</span><input type="text" name="name" required value="THR Idul Fitri <?= date('Y') + ((int)date('n') > 4 ? 1 : 0) ?>"></label>
+    <div class="row2"><label class="field"><span>Tanggal hari raya</span><input type="date" name="holiday" required><small>Masa kerja dihitung sampai tanggal ini.</small></label>
+      <label class="field"><span>Tanggal dibayar</span><input type="date" name="pay_date" required><small>Paling lambat H-7. Menentukan masa pajak PPh 21.</small></label></div>
+    <small class="muted">Permenaker 6/2016: masa kerja 12 bulan atau lebih = 1 bulan upah (gaji pokok + tunjangan tetap); 1–11 bulan = masa kerja / 12 × upah; di bawah 1 bulan tidak mendapat THR.</small>
+    <div class="formfoot"><button class="btn primary">Hitung</button></div></form>
+  <?php endif; ?>
+<?php
+// ======================================================================= Bukti potong (BPA1)
+elseif ($p === 'bupot'):
+    $year = (int)get('year', date('Y'));
+    $list = q("SELECT DISTINCT p.pegawai_id, p.pegawai_nama, p.pegawai_pin FROM pegawai p WHERE p.pegawai_id IN
+               (SELECT pegawai_id FROM web_payslip WHERE period_to BETWEEN ? AND ?) OR p.pegawai_id IN
+               (SELECT s.pegawai_id FROM web_thr_slip s JOIN web_thr t ON t.id = s.thr_id WHERE t.pay_date BETWEEN ? AND ?) ORDER BY p.pegawai_nama",
+              ["$year-01-01", "$year-12-31", "$year-01-01", "$year-12-31"])->fetchAll();
+    hris_header('Bukti potong PPh 21', 'payroll', 'payroll.php?p=bupot', 'Penggajian'); ?>
+  <form class="toolbar" method="get"><input type="hidden" name="p" value="bupot"><label>Tahun pajak <input type="number" name="year" value="<?= $year ?>" style="width:90px"></label><button class="btn">Tampilkan</button>
+    <?php if ($list): ?><a class="btn" target="_blank" href="bupot.php?year=<?= $year ?>&all=1">Cetak semua</a><?php endif; ?></form>
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Nama karyawan</th><th>Masa perolehan</th><th class="num">Penghasilan bruto</th><th class="num">PKP</th><th class="num">PPh 21 terutang</th><th class="num">Sudah dipotong</th><th>Status</th><th class="actions">Dokumen</th></tr></thead><tbody>
+    <?php foreach ($list as $e): $b = bpa1($e['pegawai_id'], $year); if (!$b) continue; $l = $b['lines']; ?>
+      <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span></td><td><?= sprintf('%02d', $b['from']) ?> – <?= sprintf('%02d', $b['to']) ?></td>
+        <td class="num"><?= rupiah($l[8]) ?></td><td class="num"><?= rupiah($l[16]) ?></td><td class="num"><?= rupiah($l[19]) ?></td><td class="num"><?= rupiah($l[20]) ?></td>
+        <td><?php if (!$b['final']): ?><span class="pill grey">Sementara</span><?php elseif ($b['diff']): ?><span class="pill warn" title="Terutang − dipotong">Selisih <?= rupiah($b['diff']) ?></span><?php else: ?><span class="pill ok">Final</span><?php endif; ?></td>
+        <td class="actions"><a class="btn small" target="_blank" href="bupot.php?<?= h(http_build_query(['year' => $year, 'id' => $e['pegawai_id']])) ?>">Lihat / cetak</a></td></tr>
+    <?php endforeach; ?>
+    </tbody></table></div><?php if (!$list): ?><div class="empty"><strong>Belum ada gaji tersimpan di <?= $year ?></strong>Bukti potong dibuat dari slip gaji dan THR yang disimpan.</div><?php endif; ?></div>
+  <p class="muted">Bukti potong tahunan pegawai tetap (BPA1, PER-2/PJ/2024) dibuat dari slip gaji dan THR yang disimpan. "Final" setelah gaji Desember disimpan; sebelum itu angkanya sementara. Pelaporan resmi tetap lewat e-Bupot di Coretax.</p>
 <?php
 // ======================================================================= Data gaji karyawan
 elseif ($p === 'setup'):

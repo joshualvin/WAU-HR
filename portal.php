@@ -133,6 +133,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $page = 'reimburse';
+    } elseif ($action === 'loan_request') {
+        ensure_payroll_tables();
+        $amount = (int)preg_replace('/\D/', '', post('jumlah'));
+        $inst = (int)preg_replace('/\D/', '', post('cicilan'));
+        if ($amount <= 0) $error = 'Isi jumlah kasbon.';
+        elseif ($inst <= 0 || $inst > $amount) $error = 'Isi cicilan per gaji (tidak lebih dari jumlah kasbon).';
+        elseif (post('keterangan') === '') $error = 'Isi keperluan kasbon.';
+        elseif (q("SELECT COUNT(*) FROM web_loan WHERE pegawai_id = ? AND status = 'pending'", [$me['id']])->fetchColumn()) $error = 'Masih ada pengajuan kasbon yang menunggu persetujuan.';
+        else {
+            q('INSERT INTO web_loan (pegawai_id, tgl, jumlah, cicilan, keterangan, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$me['id'], date('Y-m-d'), $amount, $inst, mb_substr(post('keterangan'), 0, 255), LOAN_PENDING, date('Y-m-d H:i:s')]);
+            audit('loan_request', "{$me['name']} $amount");
+            flash('Pengajuan kasbon terkirim. Menunggu persetujuan HR.');
+            redirect('portal.php?p=kasbon');
+        }
+        $page = 'kasbon';
+    } elseif ($action === 'loan_cancel') {
+        ensure_payroll_tables();
+        q('DELETE FROM web_loan WHERE id = ? AND pegawai_id = ? AND status = ?', [(int)post('id'), $me['id'], LOAN_PENDING]);
+        flash('Pengajuan kasbon dibatalkan.');
+        redirect('portal.php?p=kasbon');
     } elseif ($action === 'ot_cancel' || $action === 'rb_cancel') {
         ensure_claim_tables();
         $table = $action === 'ot_cancel' ? 'web_overtime' : 'web_reimburse';
@@ -207,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 list($pFrom, $pTo) = current_period();
-$tabs = ['home' => 'Beranda', 'shift' => 'Jadwal', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'slip' => 'Slip Gaji', 'review' => 'Penilaian', 'profile' => 'Profil'];
+$tabs = ['home' => 'Beranda', 'shift' => 'Jadwal', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'kasbon' => 'Kasbon', 'slip' => 'Slip Gaji', 'review' => 'Penilaian', 'profile' => 'Profil'];
 if (!isset($tabs[$page])) $page = 'home';
 portal_header($tabs[$page], $tabs, $page, $emp);
 if ($error) echo '<div class="p-alert err">' . h($error) . '</div>';
@@ -454,9 +475,45 @@ if ($page === 'home'):
   <?php endforeach; ?>
   <?php if (!$reviews): ?><div class="p-list"><div class="p-item muted">Belum ada penilaian kinerja.</div></div><?php endif; ?>
 
+<?php elseif ($page === 'kasbon'):
+    ensure_payroll_tables();
+    $loans = q('SELECT l.*, (SELECT COALESCE(SUM(jumlah), 0) FROM web_loan_pay x WHERE x.loan_id = l.id) repaid FROM web_loan l WHERE pegawai_id = ? ORDER BY tgl DESC, id DESC', [$me['id']])->fetchAll(); ?>
+  <div class="p-card">
+    <h2>Ajukan kasbon</h2>
+    <form method="post" class="p-form two"><?= csrf_field() ?><input type="hidden" name="action" value="loan_request">
+      <label>Jumlah (Rp) <input name="jumlah" inputmode="numeric" required value="<?= h(post('jumlah')) ?>" placeholder="1000000"></label>
+      <label>Cicilan per gaji (Rp) <input name="cicilan" inputmode="numeric" required value="<?= h(post('cicilan')) ?>" placeholder="250000"></label>
+      <label class="wide">Keperluan <input name="keterangan" required maxlength="255" value="<?= h(post('keterangan')) ?>"></label>
+      <div class="wide"><button class="p-btn primary">Kirim pengajuan</button> <span class="muted">Setelah disetujui HR, cicilan dipotong dari gaji sampai lunas.</span></div>
+    </form>
+  </div>
+  <h2>Kasbon saya</h2>
+  <div class="p-list">
+    <?php foreach ($loans as $l): ?>
+      <div class="p-item">
+        <div class="p-date"><b><?= date('d', strtotime($l['tgl'])) ?></b><span><?= date('m-y', strtotime($l['tgl'])) ?></span></div>
+        <div class="p-main"><div><b><?= rupiah($l['jumlah']) ?></b> · cicilan <?= rupiah($l['cicilan']) ?> per gaji</div>
+          <div class="muted"><?= h($l['keterangan']) ?><?= in_array($l['status'], [LOAN_ACTIVE, LOAN_PAID], true) ? ' · sudah dibayar ' . rupiah($l['repaid']) . ' · sisa ' . rupiah($l['jumlah'] - $l['repaid']) : '' ?></div></div>
+        <div style="display:flex;gap:6px;align-items:center"><?php $lb = [LOAN_PENDING => ['b-pending', 'Menunggu'], LOAN_ACTIVE => ['b-ok', 'Berjalan'], LOAN_PAID => ['b-off', 'Lunas'], LOAN_REJECTED => ['b-absent', 'Ditolak']][$l['status']]; ?><span class="badge <?= $lb[0] ?>"><?= $lb[1] ?></span>
+          <?php if ($l['status'] === LOAN_PENDING): ?><form method="post" onsubmit="return confirm('Batalkan pengajuan ini?')"><?= csrf_field() ?>
+            <input type="hidden" name="action" value="loan_cancel"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>"><button class="p-btn small">Batal</button></form><?php endif; ?></div>
+      </div>
+    <?php endforeach; ?>
+    <?php if (!$loans): ?><div class="p-item muted">Belum ada kasbon.</div><?php endif; ?>
+  </div>
+
 <?php elseif ($page === 'slip'):
     ensure_payroll_tables();
-    $slips = q('SELECT period_from, period_to, netto FROM web_payslip WHERE pegawai_id = ? AND published = 1 ORDER BY period_to DESC LIMIT 36', [$me['id']])->fetchAll(); ?>
+    $slips = q('SELECT period_from, period_to, netto FROM web_payslip WHERE pegawai_id = ? AND published = 1 ORDER BY period_to DESC LIMIT 36', [$me['id']])->fetchAll();
+    $thrs = q('SELECT t.id, t.name, t.pay_date, s.netto FROM web_thr_slip s JOIN web_thr t ON t.id = s.thr_id WHERE s.pegawai_id = ? AND t.published = 1 AND s.amount > 0 ORDER BY t.pay_date DESC', [$me['id']])->fetchAll();
+    $years = array_unique(array_map(function ($r) { return substr($r['period_to'], 0, 4); }, $slips)); ?>
+  <?php if ($thrs): ?><h2>THR</h2><div class="p-list" style="margin-bottom:14px">
+    <?php foreach ($thrs as $t): ?><div class="p-item"><div class="p-date"><b><?= date('m', strtotime($t['pay_date'])) ?></b><span><?= date('Y', strtotime($t['pay_date'])) ?></span></div>
+      <div class="p-main"><div><?= h($t['name']) ?></div><div class="muted">Diterima <?= rupiah($t['netto']) ?></div></div>
+      <a class="p-btn small" target="_blank" href="payslip.php?<?= h(http_build_query(['thr' => $t['id'], 'id' => $me['id']])) ?>">Lihat slip</a></div><?php endforeach; ?></div><?php endif; ?>
+  <?php if ($years): ?><h2>Bukti potong PPh 21</h2><div class="p-list" style="margin-bottom:14px">
+    <?php foreach ($years as $y): ?><div class="p-item"><div class="p-main"><div>Tahun pajak <?= h($y) ?></div><div class="muted"><?= (int)$y < (int)date('Y') || date('n') == 12 ? 'BPA1 (1721-A1)' : 'Sementara, sampai gaji Desember' ?></div></div>
+      <a class="p-btn small" target="_blank" href="bupot.php?<?= h(http_build_query(['year' => $y, 'id' => $me['id']])) ?>">Lihat</a></div><?php endforeach; ?></div><h2>Slip gaji</h2><?php endif; ?>
   <div class="p-list">
     <?php foreach ($slips as $r): ?>
       <div class="p-item">

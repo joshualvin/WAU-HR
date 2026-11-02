@@ -34,4 +34,27 @@ check('kes capped', $b['kes_emp'], 120000); check('jp capped', $b['jp_emp'], 105
 check('ot workday 2h', overtime_pay(120, 100000, false), 350000);
 check('ot workday 30m', overtime_pay(30, 100000, false), 75000);
 check('ot rest 9h', overtime_pay(540, 100000, true), 2100000);
+// Sales bonus: highest tier reached, rate % of sales (tiers 80% -> 1%, 100% -> 2%, 120% -> 3%)
+$tiers = [['min_pct' => 80, 'rate' => 1, 'fixed' => 0], ['min_pct' => 100, 'rate' => 2, 'fixed' => 0], ['min_pct' => 120, 'rate' => 3, 'fixed' => 500000]];
+check('bonus 85%', sales_bonus(100000000, 85000000, $tiers), [850000, 85.0]);
+check('bonus 120% + fixed', sales_bonus(100000000, 120000000, $tiers), [4100000, 120.0]);
+check('bonus below tiers', sales_bonus(100000000, 70000000, $tiers)[0], 0);
+check('bonus no target', sales_bonus(0, 5000000, $tiers), [0, 0]);
+// Kasbon: the last installment is what is left
+check('loan first', loan_installment(1000000, 300000, 0), 300000);
+check('loan last', loan_installment(1000000, 300000, 900000), 100000);
+check('loan paid', loan_installment(1000000, 300000, 1000000), 0);
+// THR (Permenaker 6/2016): full months of service to the holiday
+check('months 11', service_months('2025-03-15', '2026-03-14'), 11);
+check('months 12', service_months('2025-03-15', '2026-03-15'), 12);
+check('months none', service_months(null, '2026-03-15'), 0);
+check('thr pro rata', thr_amount(6000000, 6), 3000000);
+check('thr full', thr_amount(6000000, 30), 6000000);
+check('thr under 1 month', thr_amount(6000000, 0), 0);
+// THR tax: TER A on 8 jt = 1.5% (120,000), on 8 + 8 jt = 7% (1,120,000); the THR slip withholds the difference and
+// the month's payroll then withholds the rest, so the month totals TER on salary + THR
+$thrTax = ter_tax('TK/0', 16000000) - ter_tax('TK/0', 8000000);
+check('thr tax', $thrTax, 1000000);
+check('salary tax with thr', pph21(['ptkp' => 'TK/0'], 8000000, 0, '2027-03-20', 1, ['month' => [8000000, $thrTax], 'year' => [8000000, $thrTax]])[0], 120000);
+check('salary tax without thr', pph21(['ptkp' => 'TK/0'], 8000000, 0, '2027-03-20', 1, ['month' => [0, 0], 'year' => [0, 0]])[0], 120000);
 echo "payroll_test: $ok checks passed\n";

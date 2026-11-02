@@ -8,10 +8,12 @@
 // add them if the company needs them.
 
 require_once __DIR__ . '/claims.php';
+require_once __DIR__ . '/payextra.php';
 
 function ensure_payroll_tables()
 {
     ensure_claim_tables();
+    ensure_payextra_tables();
     db()->exec("CREATE TABLE IF NOT EXISTS web_pay_emp (
         pegawai_id INT NOT NULL PRIMARY KEY,
         gaji_pokok BIGINT NOT NULL DEFAULT 0,
@@ -161,14 +163,19 @@ function overtime_pay($minutes, $hourly, $restDay)
 /**
  * Monthly PPh 21 withheld. TER on the month's gross for January-November; in the last period of the year
  * (period ending in December) the annual Pasal 17 tax minus what was already withheld in earlier saved periods.
- * Returns [tax, explanation].
+ * THR paid in the same tax month is taxed together with the salary, minus the tax already withheld on the THR slip.
+ * $thr = thr_taxed() result (looked up when null). Returns [tax, explanation].
  */
-function pph21($pay, $bruto, $iuranEmp, $periodTo, $pegawaiId)
+function pph21($pay, $bruto, $iuranEmp, $periodTo, $pegawaiId, $thr = null)
 {
+    if ($thr === null) $thr = thr_taxed($pegawaiId, $periodTo);
     if ((int)date('n', strtotime($periodTo)) !== 12) {
         $cat = ter_category($pay['ptkp']);
-        $rate = ter_rate($cat, $bruto);
-        return [(int)floor($bruto * $rate / 100), "TER $cat {$rate}% × " . rupiah($bruto)];
+        $all = $bruto + $thr['month'][0];
+        $rate = ter_rate($cat, $all);
+        $note = "TER $cat {$rate}% × " . rupiah($all);
+        if (!$thr['month'][0]) return [(int)floor($bruto * $rate / 100), $note];
+        return [(int)max(0, floor($all * $rate / 100) - $thr['month'][1]), "$note (gaji + THR " . rupiah($thr['month'][0]) . ') − PPh THR ' . rupiah($thr['month'][1])];
     }
     $year = substr($periodTo, 0, 4);
     $prev = ['b' => 0, 't' => 0];
@@ -179,12 +186,13 @@ function pph21($pay, $bruto, $iuranEmp, $periodTo, $pegawaiId)
         $prev['t'] += $row['pph21'];
         $prevIuran += isset($l['iuran_pensiun']) ? $l['iuran_pensiun'] : 0;
     }
-    $annualBruto = $prev['b'] + $bruto;
+    $prev['t'] += $thr['year'][1];
+    $annualBruto = $prev['b'] + $bruto + $thr['year'][0];
     $biayaJabatan = min($annualBruto * 0.05, 6000000);
     $neto = $annualBruto - $biayaJabatan - $prevIuran - $iuranEmp;
     $pkp = $neto - ptkp_amount($pay['ptkp']);
     $annual = pasal17($pkp);
-    return [(int)max(0, $annual - $prev['t']), 'Desember: PPh setahun ' . rupiah($annual) . ' − dipotong Jan–Nov ' . rupiah($prev['t'])];
+    return [(int)max(0, $annual - $prev['t']), 'Desember: PPh setahun ' . rupiah($annual) . ' − dipotong sebelumnya ' . rupiah($prev['t']) . ($thr['year'][0] ? ' (termasuk THR)' : '')];
 }
 
 function rupiah($n)
@@ -210,6 +218,8 @@ function calculate_payroll($from, $to)
     $pays = pay_data();
     $approvedOt = $s['ot_requires_approval'] ? approved_overtime($from, $to) : null;
     $claims = reimbursements_for_period($to);
+    $bonuses = bonuses_for_period($to);
+    $loans = loan_deductions($to);
     $days = [];
     foreach (daily_attendance($from, $to) as $r) $days[$r['pegawai_id']][] = $r;
     $out = [];
@@ -240,6 +250,12 @@ function calculate_payroll($from, $to)
             'Uang makan / transport (' . $c['present'] . ' hari)' => (int)($p['uang_harian'] * $c['present']),
             'Lembur' => $c['ot_pay'],
         ];
+        if (isset($bonuses[$id])) {
+            $bn = $bonuses[$id];
+            $pct = $bn['target'] > 0 ? round($bn['sales'] / $bn['target'] * 100, 1) : 0;
+            $earn['Bonus penjualan (capaian ' . str_replace('.', ',', $pct) . '%)'] = (int)$bn['sales_bonus'];
+            $earn['Bonus lain' . ($bn['note'] !== '' ? ' (' . $bn['note'] . ')' : '')] = (int)$bn['other_bonus'];
+        }
         $deduct = [];
         if ($s['absent_deduct'] && $c['absent'] && $c['workdays']) $deduct['Potongan tidak hadir (' . $c['absent'] . ' hari)'] = (int)round($wage / $c['workdays'] * $c['absent']);
         if ($s['late_per_minute'] && $c['late_min']) $deduct['Potongan terlambat (' . $c['late_min'] . ' menit)'] = (int)round($s['late_per_minute'] * $c['late_min']);
@@ -254,14 +270,26 @@ function calculate_payroll($from, $to)
         $iuranEmp = $b['jht_emp'] + $b['jp_emp'];
         list($tax, $taxNote) = pph21($p, $bruto, $iuranEmp, $to, $id);
         $empDeduct = ['BPJS Kesehatan (1%)' => $b['kes_emp'], 'BPJS JHT (2%)' => $b['jht_emp'], 'BPJS JP (1%)' => $b['jp_emp'], 'PPh 21' => $tax];
+        // kasbon installments: repayment, so after tax; never more than the pay left, the rest moves to the next period
+        $left = $earnTotal + (int)array_sum(array_column(isset($claims[$id]) ? $claims[$id] : [], 'jumlah')) - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax;
+        $myLoans = [];
+        foreach (isset($loans[$id]) ? $loans[$id] : [] as $l) {
+            $amt = (int)max(0, min($l[1], $left));
+            if (!$amt) continue;
+            $left -= $amt;
+            $myLoans[] = [$l[0], $amt, $l[2] + $l[1] - $amt];
+            $empDeduct['Cicilan kasbon #' . $l[0] . ' (sisa ' . rupiah($l[2] + $l[1] - $amt) . ')'] = $amt;
+        }
+        $loanTotal = (int)array_sum(array_column($myLoans, 1));
         $out[$id] = [
             'pegawai_id' => $id, 'pin' => $e['pegawai_pin'], 'name' => $e['pegawai_nama'], 'ptkp' => $p['ptkp'], 'npwp' => $p['npwp'],
             'period_from' => $from, 'period_to' => $to, 'counts' => $c,
             'earnings' => array_filter($earn), 'deductions' => array_filter($deduct + $empDeduct),
             'company' => ['BPJS Kesehatan (4%)' => $b['kes_co'], 'BPJS JHT (3,7%)' => $b['jht_co'], 'BPJS JP (2%)' => $b['jp_co'], 'BPJS JKK' => $b['jkk'], 'BPJS JKM' => $b['jkm']],
             'bruto' => $bruto, 'iuran_pensiun' => $iuranEmp, 'pph21' => $tax, 'pph21_note' => $taxNote,
-            'netto' => $earnTotal + $reimb - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax,
+            'netto' => $earnTotal + $reimb - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax - $loanTotal,
             'reimburse_ids' => array_map('intval', array_column($myClaims, 'id')),
+            'loans' => $myLoans, 'kasbon' => $loanTotal,
         ];
     }
     return $out;
@@ -269,6 +297,7 @@ function calculate_payroll($from, $to)
 
 function save_payroll($rows, $publish)
 {
+    if ($rows) record_loan_deductions(reset($rows)['period_to'], $rows);
     foreach ($rows as $r) {
         q('REPLACE INTO web_payslip (period_to, pegawai_id, period_from, bruto, pph21, netto, detail, published, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [$r['period_to'], $r['pegawai_id'], $r['period_from'], $r['bruto'], $r['pph21'], $r['netto'], json_encode($r), $publish ? 1 : 0, date('Y-m-d H:i:s'), actor()]);
