@@ -103,11 +103,15 @@ function save_cv($upload)
 
 /**
  * Turn a hired candidate into an employee: next free PIN, the job's position / department / office, the first work
- * schedule from the start date, and the onboarding checklist. Returns the new pegawai_id.
+ * schedule from the start date, the employment status from the job's type (a contract ends on $end, default one
+ * year) and the onboarding checklist. Returns the new pegawai_id.
  */
-function hire_candidate($cand, $job, $start)
+function hire_candidate($cand, $job, $start, $end = null)
 {
     ensure_talent_tables(); // before the transaction: CREATE TABLE commits it
+    ensure_employment_tables();
+    $status = employment_from_text($job['employment']);
+    if (employment_needs_end($status) && !$end) $end = date('Y-m-d', strtotime($start . ' +1 year -1 day'));
     $pdo = db();
     $pdo->beginTransaction();
     try {
@@ -123,6 +127,7 @@ function hire_candidate($cand, $job, $start)
         if ($sched) q('INSERT IGNORE INTO jdw_kerja_pegawai (pegawai_id, jdw_kerja_m_id, jdw_kerja_m_mulai) VALUES (?, ?, ?)', [$id, $sched, $start]);
         q('UPDATE web_candidate SET stage = ?, pegawai_id = ?, updated_at = ? WHERE id = ?', ['hired', $id, date('Y-m-d H:i:s'), $cand['id']]);
         start_checklist($id, 'onboarding', $start);
+        save_employment($id, $status, '', $start, employment_needs_end($status) ? $end : null, null, 'Dari rekrutmen: ' . $job['title']);
         $pdo->commit();
     } catch (Exception $e) {
         $pdo->rollBack();

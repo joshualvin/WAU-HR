@@ -6,10 +6,12 @@ require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/shifts.php';
+require __DIR__ . '/inc/employment.php';
 $me = require_login();
 ensure_web_tables();
 ensure_payroll_tables();
 ensure_shift_tables();
+ensure_employment_tables();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -51,6 +53,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'swap_delete') {
         q('DELETE FROM tukar_jam WHERE tukar_tgl = ? AND pegawai_id1 = ? AND pegawai_id2 = ?', [post('tgl'), (int)post('a'), (int)post('b')]);
         flash('Tukar shift dihapus.');
+    } elseif ($action === 'emp_status_save' && $me['role'] === 'admin') {
+        $emp = employee(post('pegawai_id'));
+        $status = post('status');
+        $err = $emp ? employment_error($status, post('start'), post('end'), post('probation'), $emp['pegawai_id']) : 'Karyawan tidak ditemukan.';
+        if ($err) flash($err, 'err');
+        else {
+            save_employment($emp['pegawai_id'], $status, post('contract_no'), post('start'), post('end'), post('probation'), post('note'));
+            audit('employment_save', "{$emp['pegawai_nama']} $status " . post('start') . '..' . post('end'));
+            flash('Status kepegawaian disimpan.');
+        }
+    } elseif ($action === 'emp_status_delete' && $me['role'] === 'admin') {
+        $row = q('SELECT e.*, p.pegawai_nama FROM web_employment e JOIN pegawai p ON p.pegawai_id = e.pegawai_id WHERE e.id = ?', [(int)post('id')])->fetch();
+        if ($row) {
+            q('DELETE FROM web_employment WHERE id = ?', [$row['id']]);
+            audit('employment_delete', "{$row['pegawai_nama']} {$row['status']} {$row['start_date']}");
+            flash('Riwayat status dihapus.');
+        }
+    } elseif ($action === 'emp_status_bulk' && $me['role'] === 'admin') {
+        // first-time setup: one status for every active employee without one, from their start date
+        $status = post('status');
+        $have = current_employment();
+        $n = 0;
+        if (isset(employment_statuses()[$status]) && !employment_needs_end($status)) {
+            foreach (employees(true) as $e) {
+                if (isset($have[$e['pegawai_id']])) continue;
+                save_employment($e['pegawai_id'], $status, '', $e['tgl_mulai_kerja'] ?: date('Y-m-d'), null, null, 'Diisi massal');
+                $n++;
+            }
+            audit('employment_bulk', "$status: $n karyawan");
+        }
+        flash("Status diisi untuk $n karyawan. Ubah karyawan kontrak satu per satu di profilnya.");
     } elseif ($action === 'code' && $me['role'] === 'admin') {
         $emp = employee(post('pegawai_id'));
         if ($emp) {
@@ -116,6 +149,7 @@ if ($m === 'home'):
     $news = array_filter($all, function ($p) { return $p['tgl_mulai_kerja'] && $p['tgl_mulai_kerja'] >= date('Y-m-d', strtotime('-90 days')); });
     $total = count($rows) ?: 1;
     $hr = (int)date('G');
+    $alerts = employment_alerts(30);
     hris_header('Beranda', 'home', 'home'); ?>
   <div class="homegrid">
     <div class="card hello">
@@ -154,6 +188,11 @@ if ($m === 'home'):
         <?php foreach (array_slice($news, 0, 4) as $p): ?><div class="li"><span class="avatar"><?= h(initials($p['pegawai_nama'])) ?></span><div class="meta"><b><?= h($p['pegawai_nama']) ?></b><small>mulai <?= date('d-m-Y', strtotime($p['tgl_mulai_kerja'])) ?></small></div></div><?php endforeach; ?>
         <?php if (!$news): ?><div class="muted">Tidak ada.</div><?php endif; ?></div></div></div>
     </div>
+    <?php if ($alerts): ?><div class="card"><h2>Kontrak & masa percobaan (30 hari) <span class="side"><a href="hr.php?m=employees&ks=kontrak">Karyawan kontrak ›</a></span></h2><div class="list">
+      <?php foreach ($alerts as $a): ?><div class="li"><span class="avatar"><?= h(initials($a['emp']['pegawai_nama'])) ?></span>
+        <div class="meta"><a href="hr.php?m=employee&id=<?= (int)$a['emp']['pegawai_id'] ?>&tab=employment"><b><?= h($a['emp']['pegawai_nama']) ?></b></a><small><?= h($a['what']) ?> <?= h(fmt_date($a['date'])) ?></small></div>
+        <span class="pill <?= $a['date'] < $today ? 'bad' : 'warn' ?>"><?= $a['date'] < $today ? 'lewat ' . (int)((strtotime($today) - strtotime($a['date'])) / 86400) . ' hari' : (int)((strtotime($a['date']) - strtotime($today)) / 86400) . ' hari lagi' ?></span></div><?php endforeach; ?>
+    </div></div><?php endif; ?>
     <div class="grid3">
       <div class="card"><h2>Cuti / izin 7 hari ke depan</h2><div class="list">
         <?php foreach ($off as $r): ?><div class="li"><span class="code"><?= date('d', strtotime($r['izin_tgl'])) ?></span><div class="meta"><b><?= h($r['pegawai_nama']) ?></b><small><?= h($r['izin_jenis_name']) ?> · <?= h(fmt_date($r['izin_tgl'])) ?></small></div></div><?php endforeach; ?>
@@ -180,6 +219,10 @@ elseif ($m === 'employees'):
     if ($status !== '') { $where[] = 'p.pegawai_status = ?'; $params[] = (int)$status; }
     if ($search !== '') { $where[] = '(p.pegawai_nama LIKE ? OR p.pegawai_pin LIKE ? OR p.pegawai_nip LIKE ?)'; array_push($params, "%$search%", "%$search%", "%$search%"); }
     $list = people(implode(' AND ', $where), $params);
+    $emps = current_employment();
+    $ks = get('ks');
+    if ($ks !== '') $list = array_values(array_filter($list, function ($p) use ($emps, $ks) { $r = isset($emps[$p['pegawai_id']]) ? $emps[$p['pegawai_id']] : null; return $ks === 'none' ? !$r : $r && $r['status'] === $ks; }));
+    $noStatus = 0; foreach (employees(true) as $e) if (!isset($emps[$e['pegawai_id']])) $noStatus++;
     $counts = q('SELECT pegawai_status, COUNT(*) FROM pegawai GROUP BY pegawai_status')->fetchAll(PDO::FETCH_KEY_PAIR);
     hris_header('Daftar karyawan', 'employee', 'employees', 'Karyawan', $me['role'] === 'admin' ? '<a class="btn primary" href="employee_edit.php">+ Tambah karyawan</a>' : ''); ?>
   <div class="counters" style="grid-template-columns:repeat(4,minmax(0,1fr))">
@@ -189,13 +232,22 @@ elseif ($m === 'employees'):
     <?php endforeach; ?>
   </div>
   <form class="toolbar" method="get"><input type="hidden" name="m" value="employees"><input type="hidden" name="status" value="<?= h($status) ?>">
-    <span class="search"><?= hris_icon('search') ?><input type="search" name="q" value="<?= h($search) ?>" placeholder="Cari nama, PIN, NIP"></span><button class="btn">Cari</button></form>
+    <span class="search"><?= hris_icon('search') ?><input type="search" name="q" value="<?= h($search) ?>" placeholder="Cari nama, PIN, NIP"></span>
+    <select name="ks" onchange="this.form.submit()"><option value="">Semua status kerja</option><?php foreach (employment_statuses() + ['none' => 'Belum diisi'] as $k => $l): ?><option value="<?= $k ?>"<?= $ks === $k ? ' selected' : '' ?>><?= h($l) ?></option><?php endforeach; ?></select>
+    <button class="btn">Cari</button></form>
+  <?php if ($noStatus && $me['role'] === 'admin'): ?>
+    <form method="post" class="notice" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><?= $csrf ?><input type="hidden" name="action" value="emp_status_bulk"><input type="hidden" name="back" value="<?= $back ?>">
+      <div style="flex:1"><b><?= $noStatus ?> karyawan aktif belum punya status kepegawaian.</b> Isi sekaligus dari tanggal mulai bekerja, lalu ubah yang kontrak di profilnya.</div>
+      <select name="status"><option value="tetap">Karyawan tetap (PKWTT)</option><option value="harian">Harian lepas</option></select>
+      <button class="btn" onclick="return confirm('Isi status untuk <?= $noStatus ?> karyawan?')">Isi status</button></form>
+  <?php endif; ?>
   <div class="tablecard"><div class="tablescroll"><table>
-    <thead><tr><th>Nama karyawan</th><th>NIP</th><th>Jabatan</th><th>Departemen</th><th>Kantor</th><th>Mulai bekerja</th><th>Status</th><th>Portal</th><th class="actions">Aksi</th></tr></thead>
+    <thead><tr><th>Nama karyawan</th><th>NIP</th><th>Jabatan</th><th>Departemen</th><th>Kantor</th><th>Mulai bekerja</th><th>Status kerja</th><th>Status</th><th>Portal</th><th class="actions">Aksi</th></tr></thead>
     <tbody>
     <?php foreach ($list as $p): ?>
       <tr><td><?= who($p) ?></td><td><?= h($p['pegawai_nip']) ?></td><td><?= h($p['jab']) ?></td><td><?= h($p['dep']) ?></td><td><?= h($p['kan']) ?></td>
         <td><?= $p['tgl_mulai_kerja'] ? date('d-m-Y', strtotime($p['tgl_mulai_kerja'])) : '' ?></td>
+        <td><?= employment_pill(isset($emps[$p['pegawai_id']]) ? $emps[$p['pegawai_id']] : null) ?></td>
         <td><span class="pill <?= ['1' => 'ok', '0' => 'grey', '2' => 'bad'][$p['pegawai_status']] ?? 'grey' ?>"><?= h($statusNames[$p['pegawai_status']] ?? $p['pegawai_status']) ?></span></td>
         <td class="muted"><?= $p['portal'] ? ($p['last_login'] ? 'aktif' : 'belum login') : '—' ?></td>
         <td class="actions"><a class="btn small" href="hr.php?m=employee&id=<?= (int)$p['pegawai_id'] ?>">Lihat</a></td></tr>
@@ -237,6 +289,28 @@ elseif ($m === 'employee'):
                       'Mulai bekerja' => $p['tgl_mulai_kerja'] ? date('d-m-Y', strtotime($p['tgl_mulai_kerja'])) : '', 'Tanggal berhenti' => $p['tgl_resign'] ? date('d-m-Y', strtotime($p['tgl_resign'])) : '',
                       'Portal Pegawai' => $p['portal'] ? ($p['last_login'] ? 'login terakhir ' . date('d-m-Y H:i', strtotime($p['last_login'])) : 'kode dibuat, belum login') : 'belum punya kode login'] as $k => $v): ?>
         <dt><?= h($k) ?></dt><dd><?= $v ? h($v) : '<span class="muted">—</span>' ?></dd><?php endforeach; ?></dl></div>
+    <?php $hist = q('SELECT * FROM web_employment WHERE pegawai_id = ? ORDER BY start_date DESC, id DESC', [$id])->fetchAll(); $cur = $hist ? $hist[0] : null; ?>
+    <div class="section" style="max-width:none;margin-top:16px"><h2>Status kepegawaian <?= employment_pill($cur) ?></h2>
+      <?php if ($hist): ?><div class="tablescroll"><table>
+        <thead><tr><th>Status</th><th>No. kontrak / SK</th><th>Mulai</th><th>Berakhir</th><th>Masa percobaan s/d</th><th>Catatan</th><th>Dicatat</th><?php if ($me['role'] === 'admin'): ?><th class="actions"></th><?php endif; ?></tr></thead><tbody>
+        <?php foreach ($hist as $r): ?><tr><td><b><?= h(employment_statuses()[$r['status']]) ?></b></td><td><?= h($r['contract_no']) ?></td><td><?= h(date('d-m-Y', strtotime($r['start_date']))) ?></td>
+          <td><?= $r['end_date'] ? h(date('d-m-Y', strtotime($r['end_date']))) : '' ?></td><td><?= $r['probation_end'] ? h(date('d-m-Y', strtotime($r['probation_end']))) : '' ?></td>
+          <td><?= h($r['note']) ?></td><td class="muted"><?= h($r['created_by']) ?> · <?= h(date('d-m-Y', strtotime($r['created_at']))) ?></td>
+          <?php if ($me['role'] === 'admin'): ?><td class="actions"><form method="post" class="inline" onsubmit="return confirm('Hapus baris riwayat ini?')"><?= $csrf ?><input type="hidden" name="action" value="emp_status_delete">
+            <input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>"><button class="btn small ghost">Hapus</button></form></td><?php endif; ?></tr><?php endforeach; ?>
+      </tbody></table></div><?php else: ?><p class="muted">Belum diisi.</p><?php endif; ?>
+      <?php if ($me['role'] === 'admin'):
+          $nextStart = $cur && $cur['end_date'] ? date('Y-m-d', strtotime($cur['end_date'] . ' +1 day')) : ($cur ? date('Y-m-d') : ($p['tgl_mulai_kerja'] ?: date('Y-m-d'))); ?>
+      <form method="post" style="display:grid;gap:12px;margin-top:8px"><?= $csrf ?><input type="hidden" name="action" value="emp_status_save"><input type="hidden" name="pegawai_id" value="<?= $id ?>"><input type="hidden" name="back" value="<?= $back ?>">
+        <b><?= $cur ? 'Perpanjang kontrak / ubah status' : 'Isi status' ?></b>
+        <div class="row2"><label class="field"><span>Status</span><select name="status"><?php foreach (employment_statuses() as $k => $l): ?><option value="<?= $k ?>"<?= ($cur ? $cur['status'] : 'tetap') === $k ? ' selected' : '' ?>><?= h($l) ?></option><?php endforeach; ?></select></label>
+          <label class="field"><span>No. kontrak / SK</span><input type="text" name="contract_no" maxlength="60"></label>
+          <label class="field"><span>Mulai</span><input type="date" name="start" required value="<?= h($nextStart) ?>"></label>
+          <label class="field"><span>Berakhir</span><input type="date" name="end"><small>Wajib untuk kontrak dan magang. PKWT paling lama 5 tahun termasuk perpanjangan.</small></label>
+          <label class="field"><span>Masa percobaan s/d</span><input type="date" name="probation"><small>Hanya karyawan tetap, paling lama 3 bulan.</small></label>
+          <label class="field"><span>Catatan</span><input type="text" name="note" maxlength="255"></label></div>
+        <div class="formfoot"><button class="btn primary">Simpan status</button></div></form>
+      <?php endif; ?></div>
   <?php elseif ($tab === 'attendance'):
       list($pf, $pt) = current_period();
       $from = get('from', $pf); $to = get('to', min($pt, $today));

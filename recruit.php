@@ -7,6 +7,7 @@ require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/talent.php';
 require __DIR__ . '/inc/recruit.php';
 require __DIR__ . '/inc/career.php';
+require __DIR__ . '/inc/employment.php';
 $me = require_login('admin');
 ensure_web_tables();
 ensure_recruit_tables();
@@ -77,7 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'hire' && $cand && $cand['stage'] !== 'hired') {
         $job = q('SELECT * FROM web_job WHERE id = ?', [$cand['job_id']])->fetch() ?: general_job();
         $start = valid_date(post('start')) ? post('start') : date('Y-m-d');
-        $id = hire_candidate($cand, $job, $start);
+        $end = valid_date(post('end')) && post('end') >= $start ? post('end') : null;
+        $id = hire_candidate($cand, $job, $start, $end);
         q('INSERT INTO web_candidate_note (candidate_id, note, created_by, created_at) VALUES (?, ?, ?, ?)', [$cand['id'], 'Diterima, mulai bekerja ' . fmt_date($start), actor(), $now]);
         $hired = (int)q("SELECT COUNT(*) FROM web_candidate WHERE job_id = ? AND stage = 'hired'", [$job['id']])->fetchColumn();
         if ($job['id'] && $hired >= (int)$job['headcount']) q("UPDATE web_job SET status = 'closed' WHERE id = ?", [$job['id']]);
@@ -224,8 +226,11 @@ elseif ($p === 'candidate'):
         <div class="formfoot"><button class="btn primary">Simpan</button></div></form>
       <form method="post" class="form" style="border-top:1px solid var(--line);padding-top:14px;margin-top:14px" onsubmit="return confirm('Jadikan <?= h(addslashes($c['name'])) ?> karyawan?')"><?= $csrf ?>
         <input type="hidden" name="action" value="hire"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-        <label class="field"><span>Terima & jadikan karyawan — mulai bekerja</span><input type="date" name="start" required value="<?= date('Y-m-d', strtotime('+7 days')) ?>">
-          <small>Membuat data pegawai (PIN berikutnya, jabatan/departemen/kantor dari lowongan, jadwal kerja pertama) dan memulai checklist onboarding.</small></label>
+        <?php $hireStatus = employment_from_text($j['employment']); ?>
+        <label class="field"><span>Terima & jadikan karyawan — mulai bekerja</span><input type="date" name="start" required value="<?= date('Y-m-d', strtotime('+7 days')) ?>"></label>
+        <label class="field"><span>Status: <?= h(employment_statuses()[$hireStatus]) ?><?= employment_needs_end($hireStatus) ? ' — berakhir' : '' ?></span>
+          <?php if (employment_needs_end($hireStatus)): ?><input type="date" name="end" value="<?= date('Y-m-d', strtotime('+7 days +1 year -1 day')) ?>"><?php endif; ?>
+          <small>Membuat data pegawai (PIN berikutnya, jabatan/departemen/kantor dari lowongan, jadwal kerja pertama, status kepegawaian) dan memulai checklist onboarding.</small></label>
         <div class="formfoot"><button class="btn primary">Jadikan karyawan</button></div></form>
       <form method="post" style="margin-top:10px" onsubmit="return confirm('Hapus kandidat ini beserta CV-nya?')"><?= $csrf ?><input type="hidden" name="action" value="cand_delete"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
         <button class="btn small ghost" style="color:var(--bad)">Hapus kandidat & CV</button></form>
