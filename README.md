@@ -66,3 +66,7 @@ Rates and TER brackets are in `inc/payroll.php`; `php tests/payroll_test.php` ch
 - **Pengaturan gaji → Lembur harus diajukan**: 0 (default) pays overtime from scans as before; 1 pays only up to the approved request per day.
 - Receipts are stored in `uploads/receipts/` (kept out of git, blocked for direct web access by `uploads/.htaccess`) and opened through `receipt.php`, only by an admin or the employee who uploaded them.
 
+## Onboarding, offboarding and performance reviews
+- **HR → Karyawan → On/offboarding** (`talent.php`): checklist templates for onboarding and offboarding (tasks for HR, the employee or the supervisor, due a number of days from the start), started per employee from the list or their profile. New employees without an onboarding checklist are flagged. Employees tick their own tasks on the Portal Pegawai home page.
+- **HR → Kinerja**: review cycles with weighted criteria (default: kualitas kerja, produktivitas, kehadiran, kerja sama, inisiatif). Employees rate themselves 1–5 with a note in **Portal Pegawai → Penilaian** while the cycle is open; HR scores each employee next to their attendance for the period. The final score is the weighted average of HR's scores (Sangat baik ≥ 4.5, Baik ≥ 3.5, Cukup ≥ 2.5, Kurang ≥ 1.5). Employees see their result after HR closes the cycle. `php tests/talent_test.php` checks the scoring.
+

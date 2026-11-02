@@ -4,6 +4,7 @@
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/payroll.php';
+require __DIR__ . '/inc/talent.php';
 
 $page = get('p', 'home');
 $error = '';
@@ -142,6 +143,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('Pengajuan dibatalkan.');
         }
         redirect('portal.php?p=' . ($action === 'ot_cancel' ? 'overtime' : 'reimburse'));
+    } elseif ($action === 'task_toggle') {
+        ensure_talent_tables();
+        // employees tick only their own "Karyawan" tasks
+        $t = q('SELECT * FROM web_checklist WHERE id = ? AND pegawai_id = ? AND who = ?', [(int)post('id'), $me['id'], 'Karyawan'])->fetch();
+        if ($t) q('UPDATE web_checklist SET done_at = ?, done_by = ? WHERE id = ?', $t['done_at'] ? [null, '', $t['id']] : [date('Y-m-d H:i:s'), actor(), $t['id']]);
+        redirect('portal.php');
+    } elseif ($action === 'self_review') {
+        ensure_talent_tables();
+        $cycle = q('SELECT * FROM web_review_cycle WHERE id = ? AND status = ?', [(int)post('cycle_id'), 'open'])->fetch();
+        $row = $cycle ? q('SELECT 1 FROM web_review WHERE cycle_id = ? AND pegawai_id = ?', [$cycle['id'], $me['id']])->fetchColumn() : false;
+        $scores = array_map('intval', isset($_POST['score']) ? (array)$_POST['score'] : []);
+        if (!$row) $error = 'Penilaian ini sudah ditutup.';
+        elseif (weighted_score(json_decode($cycle['criteria'], true), $scores) === null) $error = 'Beri nilai 1–5 untuk semua kriteria.';
+        else {
+            q('UPDATE web_review SET self_scores = ?, self_note = ?, self_at = ? WHERE cycle_id = ? AND pegawai_id = ?',
+                [json_encode($scores), post('note'), date('Y-m-d H:i:s'), $cycle['id'], $me['id']]);
+            audit('review_self', "{$me['name']} cycle {$cycle['id']}");
+            flash('Penilaian diri tersimpan. Terima kasih.');
+            redirect('portal.php?p=review');
+        }
+        $page = 'review';
     } elseif ($action === 'cancel') {
         $key = leave_key_from_post();
         $row = find_leave($key);
@@ -165,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 list($pFrom, $pTo) = current_period();
-$tabs = ['home' => 'Beranda', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'slip' => 'Slip Gaji', 'profile' => 'Profil'];
+$tabs = ['home' => 'Beranda', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'slip' => 'Slip Gaji', 'review' => 'Penilaian', 'profile' => 'Profil'];
 if (!isset($tabs[$page])) $page = 'home';
 portal_header($tabs[$page], $tabs, $page, $emp);
 if ($error) echo '<div class="p-alert err">' . h($error) . '</div>';
@@ -206,6 +228,17 @@ if ($page === 'home'):
     <div class="p-stat"><b><?= $quota === null ? '—' : max(0, $quota - $taken) ?></b><span>Sisa cuti <?= date('Y') ?></span></div>
   </div>
   <p class="muted">Periode <?= h(fmt_date($pFrom)) ?> – <?= h(fmt_date($pTo)) ?></p>
+  <?php ensure_talent_tables();
+  $myTasks = q('SELECT * FROM web_checklist WHERE pegawai_id = ? AND who = ? ORDER BY done_at IS NOT NULL, due_date, sort', [$me['id'], 'Karyawan'])->fetchAll();
+  if ($myTasks && array_filter($myTasks, function ($t) { return !$t['done_at']; })): ?>
+  <div class="p-card"><h2>Tugas saya</h2>
+    <?php foreach ($myTasks as $t): ?>
+      <form method="post" class="p-item" style="padding:6px 0"><?= csrf_field() ?><input type="hidden" name="action" value="task_toggle"><input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
+        <input type="checkbox" <?= $t['done_at'] ? 'checked' : '' ?> onchange="this.form.submit()" style="height:18px;width:18px" aria-label="Selesai">
+        <div class="p-main" style="<?= $t['done_at'] ? 'text-decoration:line-through;color:var(--muted)' : '' ?>"><?= h($t['item']) ?></div>
+        <span class="muted"><?= $t['due_date'] ? 'batas ' . h(date('d-m-Y', strtotime($t['due_date']))) : '' ?></span></form>
+    <?php endforeach; ?></div>
+  <?php endif; ?>
   <div class="p-actions">
     <a class="p-btn primary" href="portal.php?p=timeoff#new">+ Ajukan cuti / izin</a>
     <a class="p-btn" href="portal.php?p=attendance">Lihat kehadiran</a>
@@ -340,6 +373,33 @@ if ($page === 'home'):
     <?php endforeach; ?>
     <?php if (!$claims): ?><div class="p-item muted">Belum ada klaim.</div><?php endif; ?>
   </div>
+
+<?php elseif ($page === 'review'):
+    ensure_talent_tables();
+    $reviews = q('SELECT r.*, c.name, c.period_from, c.period_to, c.status, c.criteria FROM web_review r JOIN web_review_cycle c ON c.id = r.cycle_id
+                  WHERE r.pegawai_id = ? ORDER BY c.period_to DESC', [$me['id']])->fetchAll(); ?>
+  <?php foreach ($reviews as $rv): $crit = json_decode($rv['criteria'], true); $self = $rv['self_scores'] ? json_decode($rv['self_scores'], true) : [];
+      $open = $rv['status'] === 'open'; ?>
+    <div class="p-card">
+      <h2><?= h($rv['name']) ?> <span class="muted" style="font-weight:400"><?= h(date('d-m-Y', strtotime($rv['period_from']))) ?> – <?= h(date('d-m-Y', strtotime($rv['period_to']))) ?></span></h2>
+      <?php if (!$open && $rv['final_score'] !== null): ?>
+        <p>Nilai akhir <b><?= number_format($rv['final_score'], 2) ?></b> · <?= h(rating_label((float)$rv['final_score'])) ?></p>
+        <?php if ($rv['mgr_note']): ?><p class="muted"><?= nl2br(h($rv['mgr_note'])) ?></p><?php endif; ?>
+      <?php endif; ?>
+      <?php if ($open): ?>
+      <form method="post" class="p-form"><?= csrf_field() ?><input type="hidden" name="action" value="self_review"><input type="hidden" name="cycle_id" value="<?= (int)$rv['cycle_id'] ?>">
+        <p class="muted">Nilai diri sendiri untuk setiap kriteria (1 = buruk, 5 = sangat baik).<?= $rv['self_at'] ? ' Terakhir disimpan ' . h(date('d-m-Y H:i', strtotime($rv['self_at']))) . '.' : '' ?></p>
+        <?php foreach ($crit as $i => $c): ?>
+          <label><?= h($c['name']) ?> (bobot <?= (int)$c['weight'] ?>%)
+            <select name="score[<?= $i ?>]" required><option value="">Pilih…</option><?php foreach (score_scale() as $v => $label): ?><option value="<?= $v ?>" <?= isset($self[$i]) && (int)$self[$i] === $v ? 'selected' : '' ?>><?= $v ?> · <?= $label ?></option><?php endforeach; ?></select></label>
+        <?php endforeach; ?>
+        <label>Catatan: pencapaian, kendala, rencana <textarea name="note" rows="4" style="font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px"><?= h($rv['self_note']) ?></textarea></label>
+        <div><button class="p-btn primary">Simpan penilaian diri</button></div>
+      </form>
+      <?php elseif ($rv['final_score'] === null): ?><p class="muted">Penilaian sudah ditutup.</p><?php endif; ?>
+    </div>
+  <?php endforeach; ?>
+  <?php if (!$reviews): ?><div class="p-list"><div class="p-item muted">Belum ada penilaian kinerja.</div></div><?php endif; ?>
 
 <?php elseif ($page === 'slip'):
     ensure_payroll_tables();

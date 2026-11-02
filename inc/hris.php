@@ -11,6 +11,7 @@ function hris_icon($name)
         'settings' => '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
         'portal'   => '<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 18c.7-2.4 2.4-3.5 4.5-3.5s3.8 1.1 4.5 3.5"/>',
         'finger'   => '<path d="M12 4a7 7 0 0 0-7 7v3M19 14v-3a7 7 0 0 0-3-5.7"/><path d="M9 20c.6-1.6 1-3.6 1-6v-3a2 2 0 0 1 4 0v3"/><path d="M13 20.5c.8-2 1.3-4 1.3-6.5"/>',
+        'star'     => '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
         'money'    => '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v5M18 9.5v5"/>',
         'search'   => '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
         'chev'     => '<path d="M9 6l6 6-6 6"/>',
@@ -23,8 +24,9 @@ function hris_modules()
 {
     return [
         'home'     => ['Beranda', 'home', ['home' => 'Beranda']],
-        'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan']],
+        'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan', 'talent.php?p=onboarding' => 'On/offboarding']],
         'time'     => ['Manajemen Waktu', 'clock', ['attendance' => 'Kehadiran', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'balance' => 'Saldo cuti']],
+        'performance' => ['Kinerja', 'star', ['talent.php?p=reviews' => 'Penilaian kinerja']],
         'report'   => ['Laporan', 'report', ['reports' => 'Semua laporan']],
         'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=reimburse' => 'Reimbursement',
                                                'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=settings' => 'Pengaturan gaji']],

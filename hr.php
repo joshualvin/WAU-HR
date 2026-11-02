@@ -183,6 +183,7 @@ elseif ($m === 'employee'):
     $p = $found[0];
     $tab = get('tab', 'personal');
     $actions = ($me['role'] === 'admin' ? '<a class="btn" href="employee_edit.php?id=' . $id . '">Ubah data</a> '
+             . '<a class="btn" href="talent.php?p=checklist&type=' . ((int)$p['pegawai_status'] === 1 ? 'onboarding' : 'offboarding') . '&id=' . $id . '">' . ((int)$p['pegawai_status'] === 1 ? 'Onboarding' : 'Offboarding') . '</a> '
              . '<form method="post" class="inline" onsubmit="return confirm(\'Buat kode login baru? Kode lama tidak berlaku lagi.\')">' . $csrf
              . '<input type="hidden" name="action" value="code"><input type="hidden" name="pegawai_id" value="' . $id . '"><input type="hidden" name="back" value="' . $back . '">'
              . '<button class="btn outline">' . ($p['portal'] ? 'Kode login baru' : 'Buat kode login portal') . '</button></form>' : '');
