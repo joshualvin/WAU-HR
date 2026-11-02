@@ -5,9 +5,11 @@ require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/payroll.php';
+require __DIR__ . '/inc/shifts.php';
 $me = require_login();
 ensure_web_tables();
 ensure_payroll_tables();
+ensure_shift_tables();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -22,6 +24,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             audit($action, "{$row['pegawai_nama']} {$row['tgl']} " . fmt_minutes($row['minutes']));
             flash($action === 'ot_approve' ? 'Lembur disetujui.' : 'Lembur ditolak.');
         }
+    } elseif ($action === 'set_shift') {
+        $ids = isset($_POST['emp']) ? (array)$_POST['emp'] : [];
+        $shift = post('shift');
+        $from = post('from'); $to = post('to', $from);
+        if (!$ids) flash('Pilih karyawan.', 'err');
+        elseif (!valid_date($from) || !valid_date($to) || $to < $from || (strtotime($to) - strtotime($from)) / 86400 > 92) flash('Isi rentang tanggal yang benar (maks. 3 bulan).', 'err');
+        elseif ($shift !== 'off' && $shift !== 'schedule' && !isset(work_hours()[(int)$shift])) flash('Pilih jam kerja.', 'err');
+        else {
+            $n = set_shift($ids, $from, $to, $shift, post('note'));
+            audit('shift_set', count($ids) . " karyawan $from..$to " . $shift);
+            flash($shift === 'schedule' ? 'Jadwal dikembalikan ke jadwal kerja.' : "Shift diubah untuk $n hari-karyawan.");
+        }
+    } elseif ($action === 'swap_approve' || $action === 'swap_reject') {
+        $row = q('SELECT * FROM web_shift_swap WHERE id = ? AND status = ?', [(int)post('id'), CLAIM_PENDING])->fetch();
+        if ($row) {
+            if ($action === 'swap_approve') save_swap($row['tgl'], $row['pegawai_id'], $row['with_id'], $row['alasan']);
+            q('UPDATE web_shift_swap SET status = ?, decided_by = ? WHERE id = ?', [$action === 'swap_approve' ? CLAIM_APPROVED : CLAIM_REJECTED, actor(), $row['id']]);
+            audit($action, "{$row['pegawai_id']} <-> {$row['with_id']} {$row['tgl']}");
+            flash($action === 'swap_approve' ? 'Tukar shift disetujui.' : 'Tukar shift ditolak.');
+        }
+    } elseif ($action === 'swap_add') {
+        $a = (int)post('a'); $b = (int)post('b');
+        if (!valid_date(post('tgl')) || !$a || !$b || $a === $b) flash('Pilih tanggal dan dua karyawan yang berbeda.', 'err');
+        else { save_swap(post('tgl'), $a, $b, post('alasan')); audit('swap_add', "$a <-> $b " . post('tgl')); flash('Tukar shift disimpan.'); }
+    } elseif ($action === 'swap_delete') {
+        q('DELETE FROM tukar_jam WHERE tukar_tgl = ? AND pegawai_id1 = ? AND pegawai_id2 = ?', [post('tgl'), (int)post('a'), (int)post('b')]);
+        flash('Tukar shift dihapus.');
     } elseif ($action === 'code' && $me['role'] === 'admin') {
         $emp = employee(post('pegawai_id'));
         if ($emp) {
@@ -300,6 +329,97 @@ elseif ($m === 'timeoff'):
       <td><?= $r['izin_tgl_pengajuan'] ? date('d-m-Y', strtotime($r['izin_tgl_pengajuan'])) : '' ?></td><td><?= request_badge($r) ?></td>
       <td class="actions"><?= request_state($r) === 'pending' ? decide_buttons($r, $csrf, $back) : '' ?></td></tr><?php endforeach; ?>
     </tbody></table></div><?php if (!$shown): ?><div class="empty"><strong>Tidak ada pengajuan</strong>Pengajuan dari Portal Pegawai muncul di sini.</div><?php endif; ?></div>
+<?php
+// ======================================================================= Jadwal shift (calendar)
+elseif ($m === 'shifts'):
+    $start = get('start', date('Y-m-d', strtotime('monday this week')));
+    if (!valid_date($start)) $start = date('Y-m-d', strtotime('monday this week'));
+    $days = (int)get('days', 14) === 31 ? 31 : 14;
+    $dates = [];
+    for ($i = 0; $i < $days; $i++) $dates[] = date('Y-m-d', strtotime($start . " +$i days"));
+    $holidays = q('SELECT libur_tgl, libur_keterangan FROM libur WHERE libur_tgl BETWEEN ? AND ?', [$dates[0], end($dates)])->fetchAll(PDO::FETCH_KEY_PAIR);
+    $people = people();
+    $dept = get('dept');
+    if ($dept !== '') $people = array_filter($people, function ($p) use ($dept) { return (string)$p['pembagian2_id'] === $dept; });
+    $hoursOpts = [];
+    foreach (work_hours() as $w) $hoursOpts[$w['jk_id']] = ($w['jk_kode'] ?: $w['jk_name']) . ' · ' . $w['jk_name'] . ' ' . min_to_hm($w['start']) . '–' . min_to_hm($w['end']);
+    $nav = function ($shift) use ($start, $days, $dept) { return 'hr.php?' . http_build_query(['m' => 'shifts', 'start' => date('Y-m-d', strtotime($start . " $shift days")), 'days' => $days, 'dept' => $dept]); };
+    hris_header('Jadwal shift', 'time', 'shifts', 'Manajemen Waktu', '<a class="btn" href="schedules.php">Atur jadwal kerja</a> <a class="btn" href="workhours.php">Atur jam kerja</a>'); ?>
+  <form method="post" class="section" style="max-width:none" id="shiftform"><?= $csrf ?><input type="hidden" name="action" value="set_shift"><input type="hidden" name="back" value="<?= $back ?>">
+    <h2>Ubah shift</h2>
+    <div class="toolbar">
+      <span class="muted">Tanggal</span><input type="date" name="from" required value="<?= h($dates[0]) ?>"><span class="muted">s/d</span><input type="date" name="to" required value="<?= h($dates[0]) ?>">
+      <select name="shift" required><?php foreach ($hoursOpts as $k => $label): ?><option value="<?= (int)$k ?>"><?= h($label) ?></option><?php endforeach; ?>
+        <option value="off">Libur</option><option value="schedule">Ikuti jadwal kerja (hapus perubahan)</option></select>
+      <input type="text" name="note" placeholder="Keterangan" style="width:200px">
+      <button class="btn primary">Simpan</button>
+    </div>
+    <div class="muted" style="font-size:12px">Centang karyawan di tabel di bawah, atau klik sel untuk memilih karyawan dan tanggal itu.</div>
+  </form>
+  <form class="toolbar" method="get"><input type="hidden" name="m" value="shifts">
+    <a class="btn small" href="<?= h($nav(-$days)) ?>">‹</a><input type="date" name="start" value="<?= h($start) ?>"><a class="btn small" href="<?= h($nav($days)) ?>">›</a>
+    <select name="days"><option value="14" <?= $days === 14 ? 'selected' : '' ?>>2 minggu</option><option value="31" <?= $days === 31 ? 'selected' : '' ?>>31 hari</option></select>
+    <select name="dept"><option value="">Semua departemen</option><?php foreach (lookup('pembagian2') as $k => $v): ?><option value="<?= h($k) ?>" <?= (string)$dept === (string)$k ? 'selected' : '' ?>><?= h($v) ?></option><?php endforeach; ?></select>
+    <button class="btn">Tampilkan</button>
+    <span class="grow"></span><span class="muted">Garis bawah = diubah dari jadwal · ⇄ = tukar shift</span></form>
+  <div class="tablecard"><div class="tablescroll"><table style="font-size:12px">
+    <thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('.empcb').forEach(function(c){c.checked=this.checked}.bind(this))" aria-label="Semua"></th><th>Nama karyawan</th>
+      <?php foreach ($dates as $d): $hol = isset($holidays[$d]); ?><th style="text-align:center;<?= date('N', strtotime($d)) == 7 || $hol ? 'color:var(--bad)' : '' ?>" title="<?= $hol ? h($holidays[$d]) : '' ?>"><?= substr(fmt_date($d), 0, 3) ?><br><?= date('d', strtotime($d)) ?></th><?php endforeach; ?></tr></thead><tbody>
+    <?php foreach ($people as $p): ?>
+      <tr><td><input type="checkbox" class="empcb" form="shiftform" name="emp[]" value="<?= (int)$p['pegawai_id'] ?>"></td><td style="white-space:nowrap"><b><?= h($p['pegawai_nama']) ?></b></td>
+        <?php foreach ($dates as $d): $c = shift_cell($p['pegawai_id'], $d); if (isset($holidays[$d])) { $c['label'] = 'Libur'; $c['bg'] = '#fde8e6'; $c['title'] = $holidays[$d]; } ?>
+          <td style="text-align:center;padding:4px;background:<?= $c['bg'] ?>;cursor:pointer;<?= $c['changed'] ? 'text-decoration:underline;font-weight:600' : '' ?>" title="<?= h($c['title']) ?>"
+              onclick="pickShift(<?= (int)$p['pegawai_id'] ?>,'<?= $d ?>')"><?= h($c['label']) ?><?= $c['swap'] ? ' ⇄' : '' ?></td>
+        <?php endforeach; ?></tr>
+    <?php endforeach; ?>
+    </tbody></table></div></div>
+  <script>
+    function pickShift(id, d) {
+      var f = document.getElementById('shiftform');
+      document.querySelectorAll('.empcb').forEach(function (c) { c.checked = +c.value === id; });
+      f.from.value = d; f.to.value = d; f.scrollIntoView({behavior: 'smooth'}); f.shift.focus();
+    }
+  </script>
+<?php
+// ======================================================================= Tukar shift
+elseif ($m === 'swaps'):
+    $state = get('s', CLAIM_PENDING);
+    $cnt = q('SELECT status, COUNT(*) FROM web_shift_swap GROUP BY status')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $reqs = q('SELECT s.*, a.pegawai_nama na, a.pegawai_pin pa, b.pegawai_nama nb FROM web_shift_swap s JOIN pegawai a ON a.pegawai_id = s.pegawai_id JOIN pegawai b ON b.pegawai_id = s.with_id
+               WHERE s.status = ? ORDER BY s.tgl DESC LIMIT 300', [$state])->fetchAll();
+    $done = q('SELECT t.*, a.pegawai_nama na, b.pegawai_nama nb FROM tukar_jam t JOIN pegawai a ON a.pegawai_id = t.pegawai_id1 JOIN pegawai b ON b.pegawai_id = t.pegawai_id2
+               WHERE t.tukar_tgl >= ? ORDER BY t.tukar_tgl', [date('Y-m-d', strtotime('-30 days'))])->fetchAll();
+    $label = function ($pid, $d) { $c = shift_cell($pid, $d); return $c['label']; };
+    hris_header('Tukar shift', 'time', 'swaps', 'Manajemen Waktu'); ?>
+  <div class="counters" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+    <?php foreach ([CLAIM_PENDING => 'Menunggu persetujuan', CLAIM_APPROVED => 'Disetujui', CLAIM_REJECTED => 'Ditolak'] as $k => $lb): ?>
+      <a class="counter<?= $state === $k ? ' on' : '' ?>" href="hr.php?m=swaps&s=<?= $k ?>"><b><?= (int)(isset($cnt[$k]) ? $cnt[$k] : 0) ?></b><span><?= $lb ?></span></a>
+    <?php endforeach; ?>
+  </div>
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Tanggal</th><th>Pengaju</th><th>Tukar dengan</th><th>Jadwal saat ini</th><th>Alasan</th><th>Status</th><th class="actions">Aksi</th></tr></thead><tbody>
+    <?php foreach ($reqs as $r): ?>
+      <tr><td><?= h(fmt_date($r['tgl'])) ?></td><td><b><?= h($r['na']) ?></b></td><td><?= h($r['nb']) ?></td>
+        <td><?= h(scheduled_hours_for($r['pegawai_id'], $r['tgl'])[0]['jk_name'] ?? 'Libur') ?> ⇄ <?= h(scheduled_hours_for($r['with_id'], $r['tgl'])[0]['jk_name'] ?? 'Libur') ?></td>
+        <td><?= h($r['alasan']) ?></td><td><?= claim_badge($r['status']) ?></td>
+        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): foreach (['swap_approve' => ['primary', 'Setujui'], 'swap_reject' => ['outline', 'Tolak']] as $act => $b): ?>
+          <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="<?= $act ?>"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>">
+            <button class="btn small <?= $b[0] ?>"><?= $b[1] ?></button></form>
+        <?php endforeach; endif; ?></td></tr>
+    <?php endforeach; ?>
+    </tbody></table></div><?php if (!$reqs): ?><div class="empty"><strong>Tidak ada pengajuan</strong>Karyawan mengajukan tukar shift di Portal Pegawai.</div><?php endif; ?></div>
+  <h2 style="margin:0">Tukar shift tercatat (30 hari terakhir dan ke depan)</h2>
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Tanggal</th><th>Karyawan 1</th><th>Karyawan 2</th><th>Alasan</th><th class="actions"></th></tr></thead><tbody>
+    <?php foreach ($done as $t): ?><tr><td><?= h(fmt_date($t['tukar_tgl'])) ?></td><td><?= h($t['na']) ?> <span class="muted">→ <?= h($label($t['pegawai_id1'], $t['tukar_tgl'])) ?></span></td>
+      <td><?= h($t['nb']) ?> <span class="muted">→ <?= h($label($t['pegawai_id2'], $t['tukar_tgl'])) ?></span></td><td><?= h($t['alasan']) ?></td>
+      <td class="actions"><form method="post" class="inline" onsubmit="return confirm('Hapus tukar shift ini?')"><?= $csrf ?><input type="hidden" name="action" value="swap_delete"><input type="hidden" name="back" value="<?= $back ?>">
+        <input type="hidden" name="tgl" value="<?= h($t['tukar_tgl']) ?>"><input type="hidden" name="a" value="<?= (int)$t['pegawai_id1'] ?>"><input type="hidden" name="b" value="<?= (int)$t['pegawai_id2'] ?>"><button class="btn small ghost">Hapus</button></form></td></tr><?php endforeach; ?>
+    </tbody></table></div><?php if (!$done): ?><div class="empty"><strong>Belum ada</strong></div><?php endif; ?></div>
+  <form method="post" class="toolbar"><?= $csrf ?><input type="hidden" name="action" value="swap_add"><input type="hidden" name="back" value="<?= $back ?>">
+    <input type="date" name="tgl" required value="<?= date('Y-m-d') ?>">
+    <?php foreach (['a', 'b'] as $k): ?><select name="<?= $k ?>" required><option value="">Karyawan…</option><?php foreach (employees(true) as $e): ?><option value="<?= (int)$e['pegawai_id'] ?>"><?= h($e['pegawai_nama']) ?></option><?php endforeach; ?></select><?php endforeach; ?>
+    <input type="text" name="alasan" placeholder="Alasan" style="width:200px"><button class="btn">Tambah tukar shift</button></form>
 <?php
 // ======================================================================= Lembur (pengajuan)
 elseif ($m === 'overtime'):

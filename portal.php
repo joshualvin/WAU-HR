@@ -5,6 +5,7 @@ require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/talent.php';
+require __DIR__ . '/inc/shifts.php';
 
 $page = get('p', 'home');
 $error = '';
@@ -164,6 +165,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('portal.php?p=review');
         }
         $page = 'review';
+    } elseif ($action === 'swap_request') {
+        ensure_shift_tables();
+        $with = employee(post('with_id'));
+        if (!valid_date(post('tgl')) || post('tgl') < date('Y-m-d')) $error = 'Pilih tanggal hari ini atau sesudahnya.';
+        elseif (!$with || (int)$with['pegawai_status'] !== 1 || (int)$with['pegawai_id'] === $me['id']) $error = 'Pilih rekan kerja.';
+        elseif (post('alasan') === '') $error = 'Isi alasan.';
+        else {
+            q('INSERT INTO web_shift_swap (tgl, pegawai_id, with_id, alasan, status, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+                [post('tgl'), $me['id'], $with['pegawai_id'], post('alasan'), CLAIM_PENDING, date('Y-m-d H:i:s')]);
+            audit('swap_request', "{$me['name']} <-> {$with['pegawai_nama']} " . post('tgl'));
+            flash('Pengajuan tukar shift terkirim. Menunggu persetujuan HR.');
+            redirect('portal.php?p=shift');
+        }
+        $page = 'shift';
+    } elseif ($action === 'swap_cancel') {
+        ensure_shift_tables();
+        q('DELETE FROM web_shift_swap WHERE id = ? AND pegawai_id = ? AND status = ?', [(int)post('id'), $me['id'], CLAIM_PENDING]);
+        flash('Pengajuan dibatalkan.');
+        redirect('portal.php?p=shift');
     } elseif ($action === 'cancel') {
         $key = leave_key_from_post();
         $row = find_leave($key);
@@ -187,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 list($pFrom, $pTo) = current_period();
-$tabs = ['home' => 'Beranda', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'slip' => 'Slip Gaji', 'review' => 'Penilaian', 'profile' => 'Profil'];
+$tabs = ['home' => 'Beranda', 'shift' => 'Jadwal', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'slip' => 'Slip Gaji', 'review' => 'Penilaian', 'profile' => 'Profil'];
 if (!isset($tabs[$page])) $page = 'home';
 portal_header($tabs[$page], $tabs, $page, $emp);
 if ($error) echo '<div class="p-alert err">' . h($error) . '</div>';
@@ -315,6 +335,39 @@ if ($page === 'home'):
     <?php endforeach; ?>
     <?php if (!$reqs): ?><div class="p-item muted">Belum ada pengajuan.</div><?php endif; ?>
   </div>
+
+<?php elseif ($page === 'shift'):
+    ensure_shift_tables();
+    $holidays = q('SELECT libur_tgl, libur_keterangan FROM libur WHERE libur_tgl BETWEEN ? AND ?', [date('Y-m-d'), date('Y-m-d', strtotime('+20 days'))])->fetchAll(PDO::FETCH_KEY_PAIR);
+    $swaps = q('SELECT s.*, p.pegawai_nama FROM web_shift_swap s JOIN pegawai p ON p.pegawai_id = s.with_id WHERE s.pegawai_id = ? ORDER BY s.tgl DESC LIMIT 50', [$me['id']])->fetchAll(); ?>
+  <h2>Jadwal 3 minggu ke depan</h2>
+  <div class="p-list">
+    <?php for ($i = 0; $i < 21; $i++): $d = date('Y-m-d', strtotime("+$i days")); $c = shift_cell($me['id'], $d);
+        list($jk) = work_hours_for($me['id'], $d); $hol = isset($holidays[$d]); ?>
+      <div class="p-item" style="<?= $hol || !$jk ? 'opacity:.6' : '' ?>">
+        <div class="p-date"><b><?= date('d', strtotime($d)) ?></b><span><?= h(substr(fmt_date($d), 0, 3)) ?></span></div>
+        <div class="p-main"><?= $hol ? 'Libur: ' . h($holidays[$d]) : ($jk ? '<b>' . h($jk['jk_name']) . '</b> ' . min_to_hm($jk['start']) . ' – ' . min_to_hm($jk['end']) : 'Libur') ?>
+          <?php if ($c['changed']): ?><div class="muted"><?= $c['swap'] ? 'Tukar shift' : 'Diubah HR' ?></div><?php endif; ?></div>
+      </div>
+    <?php endfor; ?>
+  </div>
+  <div class="p-card" style="margin-top:14px">
+    <h2>Ajukan tukar shift</h2>
+    <form method="post" class="p-form two"><?= csrf_field() ?><input type="hidden" name="action" value="swap_request">
+      <label>Tanggal <input type="date" name="tgl" required min="<?= date('Y-m-d') ?>" value="<?= h(post('tgl', date('Y-m-d', strtotime('+1 day')))) ?>"></label>
+      <label>Tukar dengan <select name="with_id" required><option value="">Pilih rekan…</option>
+        <?php foreach (employees(true) as $e) if ((int)$e['pegawai_id'] !== $me['id']): ?><option value="<?= (int)$e['pegawai_id'] ?>" <?= post('with_id') == $e['pegawai_id'] ? 'selected' : '' ?>><?= h($e['pegawai_nama']) ?></option><?php endif; ?></select></label>
+      <label class="wide">Alasan <input name="alasan" required maxlength="255" value="<?= h(post('alasan')) ?>"></label>
+      <div class="wide"><button class="p-btn primary">Kirim pengajuan</button> <span class="muted">Kalian bertukar jadwal di tanggal itu setelah HR menyetujui.</span></div>
+    </form>
+  </div>
+  <?php if ($swaps): ?><h2>Riwayat tukar shift</h2><div class="p-list">
+    <?php foreach ($swaps as $r): ?><div class="p-item">
+      <div class="p-date"><b><?= date('d', strtotime($r['tgl'])) ?></b><span><?= date('m-y', strtotime($r['tgl'])) ?></span></div>
+      <div class="p-main"><div>Dengan <?= h($r['pegawai_nama']) ?></div><div class="muted"><?= h($r['alasan']) ?></div></div>
+      <div style="display:flex;gap:6px;align-items:center"><?= claim_badge($r['status']) ?>
+        <?php if ($r['status'] === CLAIM_PENDING): ?><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="swap_cancel"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><button class="p-btn small">Batal</button></form><?php endif; ?></div>
+    </div><?php endforeach; ?></div><?php endif; ?>
 
 <?php elseif ($page === 'overtime'):
     ensure_claim_tables();

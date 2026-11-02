@@ -502,7 +502,44 @@ function schedules()
 }
 
 /** The work hours for an employee on a date: [jam_kerja row or null, is day off]. */
+/**
+ * Shift changes for one employee and date, from Fingerspot's own tables: "Ganti Jam Kerja per Pegawai"
+ * (ganti_jk_d, jns_ganti_jk = 2) and "Tukar Jam" (tukar_jam). Returns ['jk' => jk_id, 'off' => bool, 'note' => text]
+ * for a changed shift, ['swap' => other pegawai_id] for a swap, or null.
+ */
+function shift_change_for($pegawaiId, $date)
+{
+    static $changes = null, $swaps = null;
+    if ($changes === null) {
+        $changes = $swaps = [];
+        foreach (q('SELECT d.pegawai_id, d.tgl_ganti_jk, d.jk_id, d.libur, h.keterangan FROM ganti_jk_d d
+                    LEFT JOIN ganti_jk_pegawai h ON h.ganti_jk_id = d.ganti_jk_id WHERE d.jns_ganti_jk = 2') as $r) {
+            $changes[$r['pegawai_id']][$r['tgl_ganti_jk']] = ['jk' => (int)$r['jk_id'], 'off' => (int)$r['libur'] !== 0, 'note' => (string)$r['keterangan']];
+        }
+        foreach (q('SELECT tukar_tgl, pegawai_id1, pegawai_id2 FROM tukar_jam') as $r) {
+            $swaps[$r['pegawai_id1']][$r['tukar_tgl']] = (int)$r['pegawai_id2'];
+            $swaps[$r['pegawai_id2']][$r['tukar_tgl']] = (int)$r['pegawai_id1'];
+        }
+    }
+    if (isset($changes[$pegawaiId][$date])) return $changes[$pegawaiId][$date];
+    if (isset($swaps[$pegawaiId][$date])) return ['swap' => $swaps[$pegawaiId][$date]];
+    return null;
+}
+
+/** Work hours for an employee on a date: a shift change wins, then a swap (the colleague's scheduled shift), then the schedule. */
 function work_hours_for($pegawaiId, $date)
+{
+    $c = shift_change_for($pegawaiId, $date);
+    if ($c && isset($c['swap'])) return scheduled_hours_for($c['swap'], $date);
+    if ($c) {
+        $wh = work_hours();
+        return ($c['off'] || !isset($wh[$c['jk']])) ? [null, true] : [$wh[$c['jk']], false];
+    }
+    return scheduled_hours_for($pegawaiId, $date);
+}
+
+/** Work hours from the employee's work schedule alone: [jam_kerja row or null, is day off]. */
+function scheduled_hours_for($pegawaiId, $date)
 {
     $assign = schedule_assignments();
     $sched = null;
