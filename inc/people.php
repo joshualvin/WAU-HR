@@ -128,7 +128,7 @@ function profile_value_label($k, $v)
 
 function doc_kinds()
 {
-    return ['ktp' => 'KTP', 'kk' => 'Kartu Keluarga', 'npwp' => 'NPWP', 'bpjs' => 'Kartu BPJS', 'ijazah' => 'Ijazah', 'kontrak' => 'Kontrak kerja', 'sertifikat' => 'Sertifikat', 'sim' => 'SIM', 'lain' => 'Lainnya'];
+    return ['ktp' => 'KTP', 'kk' => 'Kartu Keluarga', 'npwp' => 'NPWP', 'bpjs' => 'Kartu BPJS', 'ijazah' => 'Ijazah', 'kontrak' => 'Kontrak kerja', 'sertifikat' => 'Sertifikat', 'sim' => 'SIM', 'sk' => 'SK / surat mutasi', 'lain' => 'Lainnya'];
 }
 
 function save_doc_file($upload)

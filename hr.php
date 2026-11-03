@@ -12,6 +12,7 @@ require __DIR__ . '/inc/people.php';
 require __DIR__ . '/inc/company.php';
 require __DIR__ . '/inc/approval.php';
 require __DIR__ . '/inc/homestats.php';
+require __DIR__ . '/inc/transfer.php';
 $me = require_login();
 ensure_web_tables();
 ensure_payroll_tables();
@@ -21,6 +22,8 @@ ensure_discipline_tables();
 ensure_people_tables();
 ensure_company_tables();
 ensure_approval_tables();
+ensure_transfer_tables();
+transfers_apply_due();   // a transfer whose day has come takes effect before anything is shown
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -450,6 +453,16 @@ elseif ($m === 'employee'):
       <p style="margin:0">Atasan langsung: <?= $boss ? '<a href="hr.php?m=employee&id=' . (int)$boss['pegawai_id'] . '">' . h($boss['pegawai_nama']) . '</a>' : '<span class="muted">belum diatur</span>' ?> · <a href="company.php?p=org">atur</a></p>
       <?php if ($held): ?><p style="margin:6px 0 0">Aset dipakai: <?= h(implode(', ', array_map(function ($a) { return $a['name'] . ($a['serial'] ? ' (' . $a['serial'] . ')' : ''); }, $held))) ?> · <a href="company.php?p=assets&f=out">kelola</a></p><?php else: ?><p class="muted" style="margin:6px 0 0">Tidak memegang aset.</p><?php endif; ?></div>
     <?php $hist = q('SELECT * FROM web_employment WHERE pegawai_id = ? ORDER BY start_date DESC, id DESC', [$id])->fetchAll(); $cur = $hist ? $hist[0] : null; ?>
+    <?php $moves = q('SELECT * FROM web_transfer WHERE pegawai_id = ? ORDER BY effective_date DESC, id DESC LIMIT 10', [$id])->fetchAll(); $tnames = transfer_names(); ?>
+    <div class="section" style="max-width:none;margin-top:16px"><h2>Riwayat mutasi <?php if ($me['role'] === 'admin'): ?><span class="side"><a href="transfer.php?p=new&pegawai_id=<?= $id ?>">+ Buat mutasi</a> · <a href="transfer.php?pegawai_id=<?= $id ?>">Semua</a></span><?php endif; ?></h2>
+      <?php if ($moves): ?><div class="tablescroll"><table>
+        <thead><tr><th>ID</th><th>Jenis</th><th>Perubahan</th><th>Berlaku</th><th>Status</th></tr></thead><tbody>
+        <?php foreach ($moves as $mv): $mst = transfer_statuses()[$mv['status']] ?? [$mv['status'], 'grey']; ?>
+          <tr><td style="white-space:nowrap"><b><?= h(transfer_code($mv['id'], $mv['created_at'])) ?></b></td><td><?= h(transfer_types()[$mv['type']] ?? $mv['type']) ?></td>
+            <td><?= h(transfer_summary($mv, $tnames)) ?><?= $mv['note'] !== '' ? '<br><small class="muted">' . h($mv['note']) . '</small>' : '' ?></td>
+            <td style="white-space:nowrap"><?= h(date('d-m-Y', strtotime($mv['effective_date']))) ?></td><td><span class="pill <?= $mst[1] ?>"><?= h($mst[0]) ?></span></td></tr>
+        <?php endforeach; ?></tbody></table></div>
+      <?php else: ?><p class="muted">Belum ada mutasi.</p><?php endif; ?></div>
     <div class="section" style="max-width:none;margin-top:16px"><h2>Status kepegawaian <?= employment_pill($cur) ?></h2>
       <?php if ($hist): ?><div class="tablescroll"><table>
         <thead><tr><th>Status</th><th>No. kontrak / SK</th><th>Mulai</th><th>Berakhir</th><th>Masa percobaan s/d</th><th>Catatan</th><th>Dicatat</th><?php if ($me['role'] === 'admin'): ?><th class="actions"></th><?php endif; ?></tr></thead><tbody>

@@ -17,6 +17,14 @@ require __DIR__ . '/inc/cloud.php';
 // [days] argument is a manual run and always goes
 if (!isset($argv[1]) && !cloud_in_window(time())) exit(0);
 
+// transfers (mutasi) dated up to today take effect here too, so they do not wait for somebody to open the HR pages
+require __DIR__ . '/inc/people.php';
+require __DIR__ . '/inc/company.php';
+require __DIR__ . '/inc/transfer.php';
+ensure_people_tables();
+ensure_transfer_tables();
+transfers_apply_due();
+
 if (cloud_token() === '') { fwrite(STDERR, "fingerspot_api_key is not set in config.php\n"); exit(1); }
 
 // one run at a time: the next scheduled start just leaves while the previous run is still waiting between calls

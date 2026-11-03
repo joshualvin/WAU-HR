@@ -27,7 +27,7 @@ function hris_modules()
 {
     return [
         'home'     => ['Beranda', 'home', ['home' => 'Beranda']],
-        'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan', 'recruit.php?p=manpower' => 'Manpower planning', 'talent.php?p=onboarding' => 'Onboarding & offboarding', 'discipline.php' => 'Surat peringatan', 'letters.php' => 'Surat & template']],
+        'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan', 'transfer.php' => 'Mutasi karyawan', 'recruit.php?p=manpower' => 'Manpower planning', 'talent.php?p=onboarding' => 'Onboarding & offboarding', 'discipline.php' => 'Surat peringatan']],
         'recruit'  => ['Rekrutmen', 'brief', ['recruit.php?p=jobs' => 'Lowongan & kandidat', 'careers.php' => 'Halaman karir']],
         'time'     => ['Manajemen Waktu', 'clock', ['attendance' => 'Kehadiran', 'shifts' => 'Jadwal shift', 'swaps' => 'Tukar shift', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'balance' => 'Saldo cuti', 'gps.php' => 'Scan GPS (FiO)']],
         'finance'  => ['Keuangan', 'wallet', ['payroll.php?p=reimburse' => 'Reimbursement', 'payroll.php?p=loans' => 'Kasbon', 'payroll.php?p=bonus' => 'Bonus penjualan']],
