@@ -25,7 +25,7 @@ function page_header($title, $active = '')
         'Pegawai'      => ['employees.php' => 'Data Pegawai'],
         'Pengecualian' => ['quick.php' => 'Input Cepat (Tidak scan / Dinas)', 'manual.php' => 'Revisi Scan Manual', 'leave.php' => 'Izin, Terlambat, Cuti', 'quota.php' => 'Jatah Cuti',
                            'missing.php' => 'Scan Tidak Lengkap', 'scans.php?add=1#add' => 'Tambah Scan Manual'],
-        'Mesin'        => ['devices.php' => 'Daftar Mesin', 'sync.php' => 'Sinkron dari Program', 'cloud.php' => 'Download Fingerspot.io', 'scans.php' => 'Data Scanlog'],
+        'Mesin'        => ['devices.php' => 'Daftar Mesin', 'sync.php' => 'Sinkron dari Program', 'ftm.php' => 'Sinkron FTM (kantor pusat)', 'cloud.php' => 'Download Fingerspot.io', 'scans.php' => 'Data Scanlog'],
         'Laporan'      => ['report.php' => 'Laporan Absensi'],
         'HR'           => ['hr.php' => 'HR Overview', 'portal.php' => 'Portal Pegawai'],
     ];

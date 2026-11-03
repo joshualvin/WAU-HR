@@ -37,6 +37,12 @@ The app adds two tables of its own to the database: `web_user` (sign-ins) and `w
 - Working days come from the employee's work schedule (`jdw_kerja_*`) and the holiday table (`libur`).
 - Downloading scans from the machines and uploading employees to them stays in Fingerspot Personnel.
 
+## Head-office scans from FTM (Fingerspot Time Management)
+- Head office scans on a machine managed by FTM, whose database `ftm` is on the same MySQL server (`ftm_db` in `config.php`, default `ftm`; `''` = off). FTM has its own PINs (Riko = 402 there, 9213 here).
+- **Mesin → Sinkron FTM (kantor pusat)** (`ftm.php`): map each FTM PIN to an employee once (suggested from the first name, e.g. Freddy → Fredy, Nugraheni → Heni, Januar → Yanuar; check and save), then sync a date range. Copied scans get the employee's PIN and sn `FTM` + the FTM machine (`FTM0` = manual corrections made in FTM). A sync replaces the copied scans of its range, so corrections and deletions in FTM come through. Attendance, reports, THR and payroll then include head office.
+- Automatic: Task Scheduler every 15 minutes, `C:\xampp\php\php.exe C:\xampp\htdocs\WAU-HR\ftm_cli.php 3` (last 3 days).
+- The FTM desktop program must save to the server's `ftm` database (its `user.fin`: host 192.168.20.102, port 3306); the page warns when FTM's newest scan is more than 3 days old.
+
 ## Download from fingerspot.io
 1. Add the token from the fingerspot.io developer portal to `config.php`: `'fingerspot_token' => 'YOUR_TOKEN',`
 2. Mesin → Download Fingerspot.io: pick the dates and machines (those with a Cloud ID) and click Download.
