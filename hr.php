@@ -195,6 +195,15 @@ if ($m === 'home'):
     $hService = home_service($scope, $today);
     $hJab = home_jabatan($scope, array_values(lookup('pembagian1')));
     $hGender = home_gender($scope);
+    $profile = [];
+    foreach (q('SELECT pegawai_id, education, religion FROM web_emp_profile') as $r) $profile[$r['pegawai_id']] = $r;
+    $pf = profile_fields();
+    $hAge = home_age($scope, $today);
+    $hEdu = home_field($scope, array_map(function ($r) { return $r['education']; }, $profile), $pf['education'][2]);
+    $hRel = home_field($scope, array_map(function ($r) { return $r['religion']; }, $profile), $pf['religion'][2]);
+    $staffAll = q('SELECT tgl_mulai_kerja start, tgl_resign end FROM pegawai' . ($depF ? ' WHERE pembagian2_id = ?' : ''), $depF ? [$depF] : [])->fetchAll();
+    $hTurn = home_turnover($staffAll, $today, 6);
+    $thisMonth = $hTurn[count($hTurn) - 1];
     $segList = function ($counts) {
         $t = array_sum($counts); $pal = home_palette(); $i = 0; $bar = ''; $rows = '';
         foreach ($counts as $label => $n) {
@@ -221,6 +230,7 @@ if ($m === 'home'):
     <div class="card" style="padding:14px 22px">
       <form method="get" class="overview-bar"><input type="hidden" name="m" value="home"><input type="hidden" name="off" value="<?= h(get('off')) ?>">
         <b>Ringkasan karyawan</b>
+        <span class="muted"><b style="color:var(--ink)"><?= count($scope) ?></b> aktif · <b style="color:var(--ink)"><?= $thisMonth['joined'] ?></b> baru bulan ini · <b style="color:var(--ink)"><?= $thisMonth['left'] ?></b> keluar bulan ini</span>
         <label class="muted">Departemen <select name="dep" onchange="this.form.submit()"><option value="">Semua</option><?php foreach (lookup('pembagian2') as $id => $name): ?><option value="<?= (int)$id ?>"<?= (int)$id === $depF ? ' selected' : '' ?>><?= h($name) ?></option><?php endforeach; ?></select></label></form>
     </div>
     <div class="grid4">
@@ -233,6 +243,21 @@ if ($m === 'home'):
         <div class="donut" style="background:<?= h(home_conic($hGender)) ?>"><span><?= array_sum($hGender) ?></span></div>
         <div class="kv"><?php $gi = 0; foreach ($hGender as $label => $n): $col = home_palette()[$gi++]; ?><div><i class="dot" style="background:<?= $col ?>"></i><span><?= h($label) ?></span><span class="n"><?= $n ?></span><span class="p"><?= home_pct($n, array_sum($hGender)) ?>%</span></div><?php endforeach; ?></div></div>
         <div class="wfoot muted">Karyawan aktif<?= $depF ? ' di departemen ini' : '' ?></div></div>
+    </div>
+    <div class="grid4">
+      <div class="card widget"><div class="wbody"><h2>Usia</h2>
+        <div style="font-size:32px;font-weight:600"><?= $hAge['avg'] === null ? '—' : str_replace('.', ',', (string)$hAge['avg']) ?> <span class="muted" style="font-size:14px;font-weight:400">tahun rata-rata</span></div>
+        <?php $aMax = max(1, max($hAge['buckets'])); ?><div class="hist" style="height:90px"><?php foreach ($hAge['buckets'] as $label => $n): ?><div class="hbar"><span class="hv"><?= $n ?></span><i style="height:<?= max(2, 100 * $n / $aMax) ?>%<?= $label === 'Belum diisi' ? ';background:#8b97a7' : '' ?>"></i><small><?= h($label) ?></small></div><?php endforeach; ?></div></div>
+        <div class="wfoot muted">Dari tanggal lahir</div></div>
+      <div class="card widget"><div class="wbody"><h2>Pendidikan</h2><?= $hEdu ? $segList($hEdu) : '<div class="muted">Belum ada data.</div>' ?></div><div class="wfoot muted">Dari data pribadi karyawan</div></div>
+      <div class="card widget"><div class="wbody"><h2>Agama</h2><?= $hRel ? $segList($hRel) : '<div class="muted">Belum ada data.</div>' ?></div><div class="wfoot muted">Dari data pribadi karyawan</div></div>
+      <div class="card widget"><div class="wbody"><h2>Turnover bulanan</h2>
+        <?php $tMax = max(1, max(array_merge([1], array_column($hTurn, 'joined'), array_column($hTurn, 'left')))); ?>
+        <div class="hist" style="height:110px"><?php foreach ($hTurn as $t): ?><div class="hbar" title="<?= h($t['ym']) ?>: <?= $t['joined'] ?> masuk, <?= $t['left'] ?> keluar, turnover <?= str_replace('.', ',', (string)$t['rate']) ?>%">
+          <span class="hv"><?= $t['left'] ?></span><i style="height:<?= max(2, 100 * $t['left'] / $tMax) ?>%;background:var(--bad)"></i><small><?= h(substr($t['ym'], 5)) ?>/<?= h(substr($t['ym'], 2, 2)) ?></small></div><?php endforeach; ?></div>
+        <div class="kv"><div><i class="dot" style="background:var(--bad)"></i><span>Keluar bulan ini</span><span class="n"><?= $thisMonth['left'] ?></span><span class="p"><?= str_replace('.', ',', (string)$thisMonth['rate']) ?>%</span></div>
+          <div><i class="dot" style="background:var(--primary)"></i><span>Masuk bulan ini</span><span class="n"><?= $thisMonth['joined'] ?></span><span class="p"></span></div></div></div>
+        <div class="wfoot muted">6 bulan terakhir · batang = karyawan keluar</div></div>
     </div>
     <div class="grid4">
       <div class="card widget"><div class="wbody"><h2>Kehadiran hari ini</h2>

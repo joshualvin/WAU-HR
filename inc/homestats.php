@@ -99,3 +99,70 @@ function home_off_range($which, $today)
     if ($which === 'week') return [$today, date('Y-m-d', strtotime($today . ' +6 days')), '7 hari'];
     return [$today, $today, 'Hari ini'];
 }
+
+/** Age in whole years on $today from a birth date, or null without a usable one. */
+function home_age_of($birth, $today)
+{
+    if (!$birth || $birth === '0000-00-00') return null;
+    $t = strtotime($birth);
+    if (!$t) return null;
+    $age = (int)date('Y', strtotime($today)) - (int)date('Y', $t) - (date('md', strtotime($today)) < date('md', $t) ? 1 : 0);
+    return $age >= 0 && $age < 120 ? $age : null;
+}
+
+/** Age widget: ['avg' => average age (1 decimal) or null, 'buckets' => [label => count]]; "Belum diisi" only when somebody has no birth date. */
+function home_age($people, $today)
+{
+    $labels = ['< 25', '25-34', '35-44', '45-54', '55+'];
+    $buckets = array_fill_keys($labels, 0);
+    $none = 0;
+    $sum = $n = 0;
+    foreach ($people as $p) {
+        $a = home_age_of($p['tgl_lahir'], $today);
+        if ($a === null) { $none++; continue; }
+        $sum += $a;
+        $n++;
+        $buckets[$a < 25 ? '< 25' : ($a < 35 ? '25-34' : ($a < 45 ? '35-44' : ($a < 55 ? '45-54' : '55+')))]++;
+    }
+    if ($none) $buckets['Belum diisi'] = $none;
+    return ['avg' => $n ? round($sum / $n, 1) : null, 'buckets' => $buckets];
+}
+
+/** Counts of a personal-data field ($values = [pegawai_id => stored value]) by its option labels ($options = [value => label]). */
+function home_field($people, $values, $options)
+{
+    $out = home_count($people, function ($p) use ($values, $options) {
+        $v = isset($values[$p['pegawai_id']]) ? $values[$p['pegawai_id']] : '';
+        return isset($options[$v]) ? $options[$v] : 'Belum diisi';
+    }, array_values($options));
+    $out = array_filter($out, function ($n) { return $n > 0; });   // a long option list: show only what is used
+    if (isset($out['Belum diisi'])) { $x = $out['Belum diisi']; unset($out['Belum diisi']); $out['Belum diisi'] = $x; }   // not filled in goes last
+    return $out;
+}
+
+/**
+ * Turnover of the last $months months ending with the month of $today. $staff: ['start' => Y-m-d|null, 'end' => resign date|null] of
+ * everybody who was ever employed. Per month: joined, left, headcount at the end, rate = left / average headcount in percent.
+ * Returns oldest month first: [['ym' => '2026-06', 'joined', 'left', 'end', 'rate'], ...].
+ */
+function home_turnover($staff, $today, $months = 6)
+{
+    $out = [];
+    $first = date('Y-m-01', strtotime($today));
+    for ($i = $months - 1; $i >= 0; $i--) {
+        $from = date('Y-m-01', strtotime("$first -$i months"));
+        $to = date('Y-m-t', strtotime($from));
+        $joined = $left = $open = $close = 0;
+        foreach ($staff as $s) {
+            $st = $s['start'] && $s['start'] !== '0000-00-00' ? $s['start'] : null;
+            $en = $s['end'] && $s['end'] !== '0000-00-00' ? $s['end'] : null;
+            if ($st && $st >= $from && $st <= $to) $joined++;
+            if ($en && $en >= $from && $en <= $to) $left++;
+            if ((!$st || $st < $from) && (!$en || $en >= $from)) $open++;    // on the payroll at the start of the month
+            if ((!$st || $st <= $to) && (!$en || $en > $to)) $close++;       // and at its end
+        }
+        $avg = ($open + $close) / 2;
+        $out[] = ['ym' => substr($from, 0, 7), 'joined' => $joined, 'left' => $left, 'end' => $close, 'rate' => $avg > 0 ? round(100 * $left / $avg, 1) : 0.0];
+    }
+    return $out;
+}
