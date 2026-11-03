@@ -260,10 +260,12 @@ function calculate_thr($holiday, $payDate, $overrides = [])
         $rule = thr_amount($upah, $months);
         $amount = isset($overrides[$id]) ? max(0, (int)$overrides[$id]) : $rule;
         $base = q('SELECT bruto, period_to FROM web_payslip WHERE pegawai_id = ? AND period_to <= ? ORDER BY period_to DESC LIMIT 1', [$id, date('Y-m-t', strtotime($payDate))])->fetch();
-        $baseBruto = $base ? (int)$base['bruto'] : 0;
+        // no payslip saved yet: the month's gross from the pay data (wage + the BPJS the company pays that counts as income)
+        $b = bpjs($p, payroll_settings());
+        $baseBruto = $base ? (int)$base['bruto'] : $upah + $b['jkk'] + $b['jkm'] + $b['kes_co'];
         $tax = $amount ? max(0, ter_tax($p['ptkp'], $baseBruto + $amount) - ter_tax($p['ptkp'], $baseBruto)) : 0;
         $note = !$start ? 'Tanggal mulai kerja kosong' : ($months < 1 ? 'Masa kerja < 1 bulan' : '');
-        if ($amount) $note = ($note ? "$note; " : '') . 'PPh: TER ' . ter_category($p['ptkp']) . ' atas gaji ' . ($base ? (substr($base['period_to'], 0, 7) === substr($payDate, 0, 7) ? 'bulan ini ' : 'terakhir (perkiraan) ') . rupiah($baseBruto) : 'Rp0 (belum ada slip) ') . '+ THR';
+        if ($amount) $note = ($note ? "$note; " : '') . 'PPh: TER ' . ter_category($p['ptkp']) . ' atas gaji ' . ($base ? (substr($base['period_to'], 0, 7) === substr($payDate, 0, 7) ? 'bulan ini ' : 'terakhir (perkiraan) ') : 'dari data gaji (perkiraan, belum ada slip) ') . rupiah($baseBruto) . ' + THR';
         $out[$id] = ['pegawai_id' => $id, 'pin' => $e['pegawai_pin'], 'name' => $e['pegawai_nama'], 'start' => $start, 'months' => $months, 'upah' => $upah,
                      'rule_amount' => $rule, 'amount' => $amount, 'base_bruto' => $baseBruto, 'pph21' => $tax, 'netto' => $amount - $tax, 'note' => $note];
     }

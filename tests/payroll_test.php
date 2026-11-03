@@ -73,4 +73,7 @@ foreach ([2026 => [17, 8], 2027 => [18, 8]] as $y => $want) {
 }
 check('2027-03-10 is Wednesday', date('w', strtotime('2027-03-10')), '3');
 check('2026-12-25 is Friday', date('w', strtotime('2026-12-25')), '5');
+// THR tax with no payslip: base = wage 5,288,796 + JKK 12,693 + JKM 15,866 + Kes 211,552 = 5,528,907 (TER A 0.25% = 13,822);
+// with THR 10,817,703 (3% = 324,531): THR tax 310,709
+check('thr tax from pay data', ter_tax('TK/0', 5528907 + 5288796) - ter_tax('TK/0', 5528907), 310709);
 echo "payroll_test: $ok checks passed\n";
