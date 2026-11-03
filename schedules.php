@@ -1,7 +1,8 @@
 <?php
 // Work schedules (jadwal kerja): which work hours apply on each day of a repeating period, and who follows it. Admins only.
 require __DIR__ . '/inc/bootstrap.php';
-require __DIR__ . '/inc/layout.php';
+require __DIR__ . '/inc/portal.php';
+require __DIR__ . '/inc/hris.php';
 require_login('admin');
 
 $all = schedules();
@@ -95,7 +96,7 @@ $counts = q('SELECT jdw_kerja_m_id, COUNT(DISTINCT pegawai_id) FROM jdw_kerja_pe
 $form = $edit ?: ['jdw_kerja_m_kode' => '', 'jdw_kerja_m_name' => '', 'jdw_kerja_m_keterangan' => '', 'jdw_kerja_m_periode' => 7,
                   'jdw_kerja_m_mulai' => date('Y-m-d', strtotime('monday this week')), 'days' => []];
 
-page_header('Jadwal Kerja', 'settings.php');
+hris_header('Jadwal Kerja', 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
 ?>
 <div class="page-head">
   <h1>Jadwal Kerja</h1>
@@ -179,4 +180,4 @@ page_header('Jadwal Kerja', 'settings.php');
   </div>
 </div>
 <?php endif; ?>
-<?php page_footer();
+<?php hris_footer();

@@ -1,7 +1,8 @@
 <?php
 // Web app sign-ins (web_user) and the change log. Admins only.
 require __DIR__ . '/inc/bootstrap.php';
-require __DIR__ . '/inc/layout.php';
+require __DIR__ . '/inc/portal.php';
+require __DIR__ . '/inc/hris.php';
 $me = require_login('admin');
 
 $error = '';
@@ -38,9 +39,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $users = q('SELECT * FROM web_user ORDER BY username')->fetchAll();
 $log = q('SELECT * FROM web_log ORDER BY id DESC LIMIT 50')->fetchAll();
 
-page_header('User', 'users.php');
+hris_header('User', 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
 ?>
-<h1>User</h1>
 <?php if ($error): ?><div class="flash err"><?= h($error) ?></div><?php endif; ?>
 <div class="row">
   <div class="card">
@@ -92,4 +92,4 @@ page_header('User', 'users.php');
     <?php endforeach; ?>
   </table></div>
 </div>
-<?php page_footer();
+<?php hris_footer();

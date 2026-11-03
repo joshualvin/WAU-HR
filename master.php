@@ -1,7 +1,8 @@
 <?php
 // Simple lists: positions, departments, locations, leave reasons, statutory leave. Admins only.
 require __DIR__ . '/inc/bootstrap.php';
-require __DIR__ . '/inc/layout.php';
+require __DIR__ . '/inc/portal.php';
+require __DIR__ . '/inc/hris.php';
 require_login('admin');
 
 $lists = [
@@ -67,7 +68,7 @@ $rows = q("SELECT * FROM $t " . master_order_by($t, $pk))->fetchAll();
 $edit = null;
 if (get('edit') !== '') foreach ($rows as $r) if ((string)$r[$pk] === get('edit')) $edit = $r;
 
-page_header($title, 'settings.php');
+hris_header($title, 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
 ?>
 <div class="page-head">
   <h1><?= h($title) ?></h1>
@@ -110,4 +111,4 @@ page_header($title, 'settings.php');
     </form>
   </div>
 </div>
-<?php page_footer();
+<?php hris_footer();

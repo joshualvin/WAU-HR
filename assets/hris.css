@@ -368,3 +368,16 @@ body.railmini .rail .cid { display: none; }
 .setrow:hover { background: var(--band); text-decoration: none; }
 .setrow small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
 .setrow .chev { color: var(--muted); font-size: 20px; }
+
+/* Settings pages ported from the attendance frame (workhours, schedules, holidays, master, users): their classes */
+.content .page-head { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 12px; }
+.content .page-head h1 { display: none; }   /* the title is already in the band above */
+.content .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.content .row > .card { flex: 1 1 320px; }
+.content .stack { display: flex; flex-direction: column; gap: 16px; }
+.content form.stack { gap: 10px; }
+.content .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 16px; }
+.content .table-wrap { overflow: auto; }
+.content form.btn-form { display: inline; margin: 0; }
+.content label.check { display: flex; flex-direction: row; align-items: center; gap: 6px; }
+.content .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; background: var(--band); color: var(--muted); }
