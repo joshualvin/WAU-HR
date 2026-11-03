@@ -5,3 +5,5 @@ uploads/receipts/*
 uploads/cv/*
 !uploads/cv/.gitkeep
 uploads/career_sync.json
+uploads/docs/*
+!uploads/docs/.gitkeep

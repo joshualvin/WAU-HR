@@ -89,6 +89,11 @@ Rates and TER brackets are in `inc/payroll.php`; `php tests/payroll_test.php` ch
 - **Pengaturan gaji → Lembur harus diajukan**: 0 (default) pays overtime from scans as before; 1 pays only up to the approved request per day.
 - Receipts are stored in `uploads/receipts/` (kept out of git, blocked for direct web access by `uploads/.htaccess`) and opened through `receipt.php`, only by an admin or the employee who uploaded them.
 
+## Personal data, documents and letters
+- **Data pribadi** (profile tab): NIK, KK, NPWP, birth place and date, marital status, marriage date, dependants, religion, blood type, education, KTP and domicile address, phone, email, emergency contact and bank account (phone, birth data and bank account stay in Fingerspot's pegawai table, the rest in `web_emp_profile`). HR edits it; employees ask for changes in **Portal Pegawai → Profil**, which HR approves on the profile (also listed on HR Beranda). When marital status / dependants point to another PTKP than the pay data, the profile says so.
+- **Dokumen** (profile tab and Portal → Profil → Dokumen saya): KTP, KK, NPWP, BPJS, ijazah, contract, certificates, SIM… as PDF or photo, with an optional expiry date; documents expiring within 30 days show on HR Beranda. Files are in `uploads/docs/` (blocked for direct access) and opened through `doc.php`, by admins or the employee.
+- **Surat & template** (`letters.php`): letters from templates with fields such as {nama} {jabatan} {mulai_kerja} {masa_kerja}: paklaring (surat keterangan kerja), surat keterangan karyawan aktif and SK pengangkatan to start with; templates can be edited and added. A letter can be edited before it is issued, gets a number (001/SKK/HR/XI/2026) and is kept and printable.
+
 ## Employment status
 - **HR → Karyawan → profile → Pekerjaan**: the status kepegawaian with its history: Karyawan tetap (PKWTT, optional probation end), Kontrak (PKWT, contract number, start and end), Harian lepas or Magang. A renewal or change adds a row; the latest one is current. Checks follow PP 35/2021: a contract chain is at most 5 years including extensions, probation only for permanent staff and at most 3 months.
 - The employee list shows each status with its end date (amber within 30 days, red when it has passed) and can be filtered by status. Employees without a status can be filled in at once from their start date.

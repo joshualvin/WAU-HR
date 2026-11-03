@@ -8,12 +8,14 @@ require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/shifts.php';
 require_once __DIR__ . '/inc/employment.php';
 require __DIR__ . '/inc/discipline.php';
+require __DIR__ . '/inc/people.php';
 $me = require_login();
 ensure_web_tables();
 ensure_payroll_tables();
 ensure_shift_tables();
 ensure_employment_tables();
 ensure_discipline_tables();
+ensure_people_tables();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -86,6 +88,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             audit('employment_bulk', "$status: $n karyawan");
         }
         flash("Status diisi untuk $n karyawan. Ubah karyawan kontrak satu per satu di profilnya.");
+    } elseif ($action === 'profile_save' && $me['role'] === 'admin') {
+        $emp = employee(post('pegawai_id'));
+        if ($emp) { save_profile($emp['pegawai_id'], clean_profile($_POST)); audit('profile_save', $emp['pegawai_nama']); flash('Data pribadi disimpan.'); }
+    } elseif (($action === 'profile_req_approve' || $action === 'profile_req_reject') && $me['role'] === 'admin') {
+        $rq = q("SELECT r.*, p.pegawai_nama FROM web_profile_request r JOIN pegawai p ON p.pegawai_id = r.pegawai_id WHERE r.id = ? AND r.status = 'pending'", [(int)post('id')])->fetch();
+        if ($rq) {
+            if ($action === 'profile_req_approve') save_profile($rq['pegawai_id'], array_intersect_key(json_decode($rq['data'], true), profile_fields()));
+            q('UPDATE web_profile_request SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?', [$action === 'profile_req_approve' ? 'approved' : 'rejected', actor(), date('Y-m-d H:i:s'), $rq['id']]);
+            audit($action, $rq['pegawai_nama']);
+            flash($action === 'profile_req_approve' ? 'Perubahan data disimpan.' : 'Pengajuan perubahan data ditolak.');
+        }
+    } elseif ($action === 'doc_upload' && $me['role'] === 'admin') {
+        $emp = employee(post('pegawai_id'));
+        list($file, $err) = save_doc_file(isset($_FILES['file']) ? $_FILES['file'] : null);
+        if (!$emp || $err || !$file) flash($err ?: 'Pilih file dokumen.', 'err');
+        else {
+            q('INSERT INTO web_emp_doc (pegawai_id, kind, title, file, expires, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$emp['pegawai_id'], isset(doc_kinds()[post('kind')]) ? post('kind') : 'lain', mb_substr(post('title'), 0, 120), $file, valid_date(post('expires')) ? post('expires') : null, actor(), date('Y-m-d H:i:s')]);
+            audit('doc_upload', "{$emp['pegawai_nama']} " . post('kind'));
+            flash('Dokumen diunggah.');
+        }
+    } elseif ($action === 'doc_delete' && $me['role'] === 'admin') {
+        $d = q('SELECT * FROM web_emp_doc WHERE id = ?', [(int)post('id')])->fetch();
+        if ($d) { @unlink(DOC_DIR . '/' . basename($d['file'])); q('DELETE FROM web_emp_doc WHERE id = ?', [$d['id']]); audit('doc_delete', $d['pegawai_id'] . ' ' . $d['kind']); flash('Dokumen dihapus.'); }
     } elseif ($action === 'code' && $me['role'] === 'admin') {
         $emp = employee(post('pegawai_id'));
         if ($emp) {
@@ -152,6 +178,9 @@ if ($m === 'home'):
     $total = count($rows) ?: 1;
     $hr = (int)date('G');
     $alerts = employment_alerts(30);
+    foreach (documents_expiring(30) as $d) $alerts[] = ['emp' => ['pegawai_id' => $d['pegawai_id'], 'pegawai_nama' => $d['pegawai_nama']], 'what' => (doc_kinds()[$d['kind']] ?? $d['kind']) . ' berakhir', 'date' => $d['expires'], 'tab' => 'docs'];
+    usort($alerts, function ($a, $b) { return strcmp($a['date'], $b['date']); });
+    $profileReqs = q("SELECT r.id, r.pegawai_id, r.created_at, p.pegawai_nama FROM web_profile_request r JOIN pegawai p ON p.pegawai_id = r.pegawai_id WHERE r.status = 'pending' ORDER BY r.created_at")->fetchAll();
     hris_header('Beranda', 'home', 'home'); ?>
   <div class="homegrid">
     <div class="card hello">
@@ -190,9 +219,11 @@ if ($m === 'home'):
         <?php foreach (array_slice($news, 0, 4) as $p): ?><div class="li"><span class="avatar"><?= h(initials($p['pegawai_nama'])) ?></span><div class="meta"><b><?= h($p['pegawai_nama']) ?></b><small>mulai <?= date('d-m-Y', strtotime($p['tgl_mulai_kerja'])) ?></small></div></div><?php endforeach; ?>
         <?php if (!$news): ?><div class="muted">Tidak ada.</div><?php endif; ?></div></div></div>
     </div>
-    <?php if ($alerts): ?><div class="card"><h2>Kontrak & masa percobaan (30 hari) <span class="side"><a href="hr.php?m=employees&ks=kontrak">Karyawan kontrak ›</a></span></h2><div class="list">
+    <?php if ($profileReqs): ?><div class="card"><h2>Pengajuan perubahan data pribadi</h2><div class="list">
+      <?php foreach ($profileReqs as $r): ?><div class="li"><span class="avatar"><?= h(initials($r['pegawai_nama'])) ?></span><div class="meta"><a href="hr.php?m=employee&id=<?= (int)$r['pegawai_id'] ?>&tab=personal"><b><?= h($r['pegawai_nama']) ?></b></a><small><?= h(date('d-m-Y H:i', strtotime($r['created_at']))) ?></small></div></div><?php endforeach; ?></div></div><?php endif; ?>
+    <?php if ($alerts): ?><div class="card"><h2>Kontrak, masa percobaan & dokumen (30 hari) <span class="side"><a href="hr.php?m=employees&ks=kontrak">Karyawan kontrak ›</a></span></h2><div class="list">
       <?php foreach ($alerts as $a): ?><div class="li"><span class="avatar"><?= h(initials($a['emp']['pegawai_nama'])) ?></span>
-        <div class="meta"><a href="hr.php?m=employee&id=<?= (int)$a['emp']['pegawai_id'] ?>&tab=employment"><b><?= h($a['emp']['pegawai_nama']) ?></b></a><small><?= h($a['what']) ?> <?= h(fmt_date($a['date'])) ?></small></div>
+        <div class="meta"><a href="hr.php?m=employee&id=<?= (int)$a['emp']['pegawai_id'] ?>&tab=<?= isset($a['tab']) ? $a['tab'] : 'employment' ?>"><b><?= h($a['emp']['pegawai_nama']) ?></b></a><small><?= h($a['what']) ?> <?= h(fmt_date($a['date'])) ?></small></div>
         <span class="pill <?= $a['date'] < $today ? 'bad' : 'warn' ?>"><?= $a['date'] < $today ? 'lewat ' . (int)((strtotime($today) - strtotime($a['date'])) / 86400) . ' hari' : (int)((strtotime($a['date']) - strtotime($today)) / 86400) . ' hari lagi' ?></span></div><?php endforeach; ?>
     </div></div><?php endif; ?>
     <div class="grid3">
@@ -276,13 +307,53 @@ elseif ($m === 'employee'):
     <div style="flex:1"><b style="font-size:16px"><?= h($p['pegawai_nama']) ?></b><div class="muted">PIN <?= h($p['pegawai_pin']) ?> · <?= h(trim($p['jab'] . ' · ' . $p['dep'] . ' · ' . $p['kan'], ' ·')) ?></div></div>
     <span class="pill <?= ['1' => 'ok', '0' => 'grey', '2' => 'bad'][$p['pegawai_status']] ?? 'grey' ?>"><?= h($statusNames[$p['pegawai_status']] ?? '') ?></span>
   </div>
-  <nav class="tabs"><?php foreach (['personal' => 'Data pribadi', 'employment' => 'Pekerjaan', 'attendance' => 'Kehadiran', 'timeoff' => 'Cuti & Izin', 'warnings' => 'Peringatan'] as $k => $label): ?>
+  <nav class="tabs"><?php foreach (['personal' => 'Data pribadi', 'employment' => 'Pekerjaan', 'attendance' => 'Kehadiran', 'timeoff' => 'Cuti & Izin', 'docs' => 'Dokumen', 'warnings' => 'Peringatan'] as $k => $label): ?>
     <a class="<?= $tab === $k ? 'on' : '' ?>" href="hr.php?m=employee&id=<?= $id ?>&tab=<?= $k ?>"><?= h($label) ?></a><?php endforeach; ?></nav>
-  <?php if ($tab === 'personal'): ?>
-    <div class="section" style="max-width:none"><dl class="dl">
-      <?php foreach (['Nama lengkap' => $p['pegawai_nama'], 'Nama panggilan' => $p['pegawai_alias'], 'Jenis kelamin' => (int)$p['gender'] === 2 ? 'Perempuan' : 'Laki-laki',
-                      'Tempat lahir' => $p['tempat_lahir'], 'Tanggal lahir' => $p['tgl_lahir'] ? date('d-m-Y', strtotime($p['tgl_lahir'])) : '', 'No. telp' => $p['pegawai_telp']] as $k => $v): ?>
-        <dt><?= h($k) ?></dt><dd><?= $v ? h($v) : '<span class="muted">—</span>' ?></dd><?php endforeach; ?></dl></div>
+  <?php if ($tab === 'personal'):
+      $pr = get_profile($id);
+      $reqs = q("SELECT * FROM web_profile_request WHERE pegawai_id = ? AND status = 'pending' ORDER BY created_at", [$id])->fetchAll();
+      $pay = q('SELECT ptkp FROM web_pay_emp WHERE pegawai_id = ?', [$id])->fetchColumn();
+      $ptkpHint = $pr['marital'] !== '' ? ptkp_from_profile($pr['marital'], $pr['dependants']) : null;
+      $editing = get('edit') === '1' && $me['role'] === 'admin'; ?>
+    <?php foreach ($reqs as $rq): $chg = json_decode($rq['data'], true); ?>
+      <div class="notice" style="display:block"><b>Pengajuan perubahan data dari karyawan (<?= h(date('d-m-Y H:i', strtotime($rq['created_at']))) ?>)</b>
+        <table style="margin:6px 0"><?php foreach ($chg as $k => $v): if (!isset(profile_fields()[$k])) continue; ?><tr><td><?= h(profile_fields()[$k][0]) ?></td><td class="muted"><?= h(profile_value_label($k, $pr[$k])) ?></td><td>→ <b><?= h(profile_value_label($k, $v)) ?></b></td></tr><?php endforeach; ?></table>
+        <?php if ($rq['note']): ?><div class="muted">Catatan: <?= h($rq['note']) ?></div><?php endif; ?>
+        <?php if ($me['role'] === 'admin'): ?><form method="post" class="inline"><?= $csrf ?><input type="hidden" name="back" value="<?= $back ?>"><input type="hidden" name="id" value="<?= (int)$rq['id'] ?>">
+          <button class="btn small primary" name="action" value="profile_req_approve">Setujui & simpan</button> <button class="btn small outline" name="action" value="profile_req_reject">Tolak</button></form><?php endif; ?></div>
+    <?php endforeach; ?>
+    <?php if ($ptkpHint && $pay && $pay !== $ptkpHint): ?><div class="notice"><div><b>PTKP di data gaji <?= h($pay) ?>, data pribadi menunjukkan <?= h($ptkpHint) ?></b>Periksa status perkawinan dan tanggungan, lalu sesuaikan PTKP di <a href="payroll.php?p=setup">Data gaji karyawan</a> bila perlu.</div></div><?php endif; ?>
+    <?php if ($editing): ?>
+      <form method="post" class="section" style="max-width:none"><?= $csrf ?><input type="hidden" name="action" value="profile_save"><input type="hidden" name="pegawai_id" value="<?= $id ?>"><input type="hidden" name="back" value="hr.php?m=employee&id=<?= $id ?>&tab=personal">
+        <div class="row2"><?php foreach (profile_fields() as $k => $f): $n = str_replace(':', '_', $k); ?>
+          <label class="field"><span><?= h($f[0]) ?></span><?php if ($f[1] === 'select'): ?><select name="<?= $n ?>"><option value="">—</option><?php foreach ($f[2] as $ok => $ol): ?><option value="<?= h($ok) ?>"<?= $pr[$k] === (string)$ok ? ' selected' : '' ?>><?= h($ol) ?></option><?php endforeach; ?></select>
+          <?php else: ?><input type="<?= $f[1] ?>" name="<?= $n ?>" value="<?= h($pr[$k]) ?>"<?= $f[1] === 'number' ? ' min="0" max="9"' : '' ?>><?php endif; ?></label>
+        <?php endforeach; ?></div>
+        <div class="formfoot"><a class="btn" href="hr.php?m=employee&id=<?= $id ?>&tab=personal">Batal</a><button class="btn primary">Simpan</button></div></form>
+    <?php else: ?>
+      <div class="section" style="max-width:none"><dl class="dl">
+        <?php foreach (['Nama lengkap' => $p['pegawai_nama'], 'Nama panggilan' => $p['pegawai_alias'], 'Jenis kelamin' => (int)$p['gender'] === 2 ? 'Perempuan' : 'Laki-laki'] as $k => $v): ?><dt><?= h($k) ?></dt><dd><?= $v ? h($v) : '—' ?></dd><?php endforeach; ?>
+        <?php foreach (profile_fields() as $k => $f): ?><dt><?= h($f[0]) ?></dt><dd><?= h(profile_value_label($k, $pr[$k])) ?></dd><?php endforeach; ?></dl>
+        <?php if ($me['role'] === 'admin'): ?><div class="formfoot"><a class="btn" href="letters.php?p=make&pegawai_id=<?= $id ?>">Buat surat</a><a class="btn primary" href="hr.php?m=employee&id=<?= $id ?>&tab=personal&edit=1">Ubah data pribadi</a></div><?php endif; ?></div>
+    <?php endif; ?>
+  <?php elseif ($tab === 'docs'):
+      $docs = q('SELECT * FROM web_emp_doc WHERE pegawai_id = ? ORDER BY kind, created_at DESC', [$id])->fetchAll(); ?>
+    <div class="tablecard"><div class="tablescroll"><table>
+      <thead><tr><th>Jenis</th><th>Keterangan</th><th>Berlaku sampai</th><th>Diunggah</th><th class="actions">Aksi</th></tr></thead><tbody>
+      <?php foreach ($docs as $d): ?><tr><td><b><?= h(doc_kinds()[$d['kind']] ?? $d['kind']) ?></b></td><td><?= h($d['title']) ?></td>
+        <td><?= $d['expires'] ? '<span class="pill ' . ($d['expires'] < $today ? 'bad' : ($d['expires'] <= date('Y-m-d', strtotime('+30 days')) ? 'warn' : 'grey')) . '">' . h(date('d-m-Y', strtotime($d['expires']))) . '</span>' : '' ?></td>
+        <td class="muted"><?= h($d['uploaded_by']) ?> · <?= h(date('d-m-Y', strtotime($d['created_at']))) ?></td>
+        <td class="actions"><a class="btn small" target="_blank" href="doc.php?id=<?= (int)$d['id'] ?>">Lihat</a>
+          <?php if ($me['role'] === 'admin'): ?><form method="post" class="inline" onsubmit="return confirm('Hapus dokumen ini?')"><?= $csrf ?><input type="hidden" name="action" value="doc_delete"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>"><button class="btn small ghost">Hapus</button></form><?php endif; ?></td></tr><?php endforeach; ?>
+      </tbody></table></div><?php if (!$docs): ?><div class="empty"><strong>Belum ada dokumen</strong></div><?php endif; ?></div>
+    <?php if ($me['role'] === 'admin'): ?>
+    <form method="post" enctype="multipart/form-data" class="section" style="margin-top:12px"><?= $csrf ?><input type="hidden" name="action" value="doc_upload"><input type="hidden" name="pegawai_id" value="<?= $id ?>"><input type="hidden" name="back" value="<?= $back ?>">
+      <div class="row2"><label class="field"><span>Jenis</span><select name="kind"><?php foreach (doc_kinds() as $k => $l): ?><option value="<?= $k ?>"><?= h($l) ?></option><?php endforeach; ?></select></label>
+        <label class="field"><span>Keterangan</span><input type="text" name="title" maxlength="120"></label>
+        <label class="field"><span>Berlaku sampai (opsional)</span><input type="date" name="expires"></label>
+        <label class="field"><span>File (PDF / JPG / PNG, maks 5 MB)</span><input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png"></label></div>
+      <div class="formfoot"><button class="btn primary">Unggah</button></div></form>
+    <?php endif; ?>
   <?php elseif ($tab === 'employment'):
       $sched = q('SELECT m.jdw_kerja_m_name, j.jdw_kerja_m_mulai FROM jdw_kerja_pegawai j JOIN jdw_kerja_m m ON m.jdw_kerja_m_id = j.jdw_kerja_m_id WHERE j.pegawai_id = ? ORDER BY j.jdw_kerja_m_mulai DESC LIMIT 1', [$id])->fetch(); ?>
     <div class="section" style="max-width:none"><dl class="dl">

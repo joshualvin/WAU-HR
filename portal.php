@@ -5,6 +5,7 @@ require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/discipline.php';
+require __DIR__ . '/inc/people.php';
 require __DIR__ . '/inc/talent.php';
 require __DIR__ . '/inc/shifts.php';
 
@@ -134,6 +135,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $page = 'reimburse';
+    } elseif ($action === 'profile_request') {
+        ensure_people_tables();
+        $chg = profile_changes(get_profile($me['id']), clean_profile($_POST));
+        if (!$chg) $error = 'Tidak ada data yang diubah.';
+        elseif (q("SELECT COUNT(*) FROM web_profile_request WHERE pegawai_id = ? AND status = 'pending'", [$me['id']])->fetchColumn()) $error = 'Masih ada pengajuan perubahan data yang menunggu HR.';
+        else {
+            q('INSERT INTO web_profile_request (pegawai_id, data, note, created_at) VALUES (?, ?, ?, ?)', [$me['id'], json_encode($chg), mb_substr(post('note'), 0, 255), date('Y-m-d H:i:s')]);
+            audit('profile_request', $me['name'] . ': ' . implode(', ', array_keys($chg)));
+            flash('Perubahan data terkirim. HR akan memeriksa dan menyimpannya.');
+            redirect('portal.php?p=profile');
+        }
+        $page = 'profile';
+    } elseif ($action === 'my_doc') {
+        ensure_people_tables();
+        list($file, $err) = save_doc_file(isset($_FILES['file']) ? $_FILES['file'] : null);
+        if ($err || !$file) $error = $err ?: 'Pilih file.';
+        else {
+            q('INSERT INTO web_emp_doc (pegawai_id, kind, title, file, expires, uploaded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [$me['id'], isset(doc_kinds()[post('kind')]) ? post('kind') : 'lain', mb_substr(post('title'), 0, 120), $file, valid_date(post('expires')) ? post('expires') : null, actor(), date('Y-m-d H:i:s')]);
+            audit('doc_upload', $me['name'] . ' ' . post('kind'));
+            flash('Dokumen diunggah.');
+            redirect('portal.php?p=profile');
+        }
+        $page = 'profile';
     } elseif ($action === 'warn_ack') {
         ensure_discipline_tables();
         q('UPDATE web_warning SET acknowledged_at = ? WHERE id = ? AND pegawai_id = ? AND acknowledged_at IS NULL', [date('Y-m-d H:i:s'), (int)post('id'), $me['id']]);
@@ -563,9 +588,34 @@ if ($page === 'home'):
     <div class="p-avatar big"><?= h(initials($emp['pegawai_nama'])) ?></div>
     <div><h1 style="margin:0"><?= h($emp['pegawai_nama']) ?></h1><div class="muted"><?= h(trim($emp['jab'] . ' · ' . $emp['dep'], ' ·')) ?></div></div>
   </div>
+  <?php ensure_people_tables(); $pr = get_profile($me['id']);
+        $pend = q("SELECT created_at FROM web_profile_request WHERE pegawai_id = ? AND status = 'pending'", [$me['id']])->fetchColumn();
+        $docs = q('SELECT * FROM web_emp_doc WHERE pegawai_id = ? ORDER BY kind, created_at DESC', [$me['id']])->fetchAll();
+        unset($fields['Tempat, tanggal lahir'], $fields['No. telp']); ?>
   <div class="p-card">
-    <dl class="p-dl"><?php foreach ($fields as $k => $v): ?><dt><?= h($k) ?></dt><dd><?= $v !== '' && $v !== null ? h($v) : '<span class="muted">—</span>' ?></dd><?php endforeach; ?></dl>
-    <p class="muted">Data salah? Hubungi HR untuk mengubahnya.</p>
+    <dl class="p-dl"><?php foreach ($fields as $k => $v): ?><dt><?= h($k) ?></dt><dd><?= $v !== '' && $v !== null ? h($v) : '<span class="muted">—</span>' ?></dd><?php endforeach; ?>
+      <?php foreach (profile_fields() as $k => $f): ?><dt><?= h($f[0]) ?></dt><dd><?= h(profile_value_label($k, $pr[$k])) ?></dd><?php endforeach; ?></dl>
+  </div>
+  <div class="p-card"><h2>Ubah data pribadi</h2>
+    <?php if ($pend): ?><p class="muted">Pengajuan perubahan data Anda (<?= h(date('d-m-Y H:i', strtotime($pend))) ?>) sedang diperiksa HR.</p>
+    <?php else: ?><form method="post" class="p-form two"><?= csrf_field() ?><input type="hidden" name="action" value="profile_request">
+      <?php foreach (profile_fields() as $k => $f): $n = str_replace(':', '_', $k); ?>
+        <label><?= h($f[0]) ?><?php if ($f[1] === 'select'): ?> <select name="<?= $n ?>"><option value="">—</option><?php foreach ($f[2] as $ok => $ol): ?><option value="<?= h($ok) ?>"<?= $pr[$k] === (string)$ok ? ' selected' : '' ?>><?= h($ol) ?></option><?php endforeach; ?></select>
+        <?php else: ?> <input type="<?= $f[1] ?>" name="<?= $n ?>" value="<?= h($pr[$k]) ?>"<?= $f[1] === 'number' ? ' min="0" max="9"' : '' ?>><?php endif; ?></label>
+      <?php endforeach; ?>
+      <label class="wide">Catatan untuk HR <input name="note" maxlength="255"></label>
+      <div class="wide"><button class="p-btn primary">Kirim perubahan</button> <span class="muted">Perubahan disimpan setelah disetujui HR. Lampirkan bukti (mis. buku nikah, KK baru) di Dokumen saya.</span></div></form><?php endif; ?>
+  </div>
+  <div class="p-card"><h2>Dokumen saya</h2>
+    <div class="p-list" style="margin-bottom:10px"><?php foreach ($docs as $d): ?><div class="p-item"><div class="p-main"><b><?= h(doc_kinds()[$d['kind']] ?? $d['kind']) ?></b> <?= h($d['title']) ?>
+      <?= $d['expires'] ? '<div class="muted">berlaku s/d ' . h(date('d-m-Y', strtotime($d['expires']))) . '</div>' : '' ?></div><a class="p-btn small" target="_blank" href="doc.php?id=<?= (int)$d['id'] ?>">Lihat</a></div><?php endforeach; ?>
+      <?php if (!$docs): ?><div class="p-item muted">Belum ada dokumen.</div><?php endif; ?></div>
+    <form method="post" enctype="multipart/form-data" class="p-form two"><?= csrf_field() ?><input type="hidden" name="action" value="my_doc">
+      <label>Jenis <select name="kind"><?php foreach (doc_kinds() as $k => $l): ?><option value="<?= $k ?>"><?= h($l) ?></option><?php endforeach; ?></select></label>
+      <label>Keterangan <input name="title" maxlength="120"></label>
+      <label>Berlaku sampai (opsional) <input type="date" name="expires"></label>
+      <label>File (PDF / foto, maks 5 MB) <input type="file" name="file" required accept=".pdf,image/*" style="height:auto;padding:6px"></label>
+      <div class="wide"><button class="p-btn">Unggah</button></div></form>
   </div>
   <div class="p-card">
     <h2>Ganti kode login</h2>
