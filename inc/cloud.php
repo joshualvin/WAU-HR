@@ -87,72 +87,72 @@ function cloud_get_attlog($cloudId, $uploadDate)
     return [$rows, null];
 }
 
-// ---------- Developer API (active path) ----------
+// ---------- Fingerspot Personnel desktop API (active path, free) ----------
+// This is the endpoint the Fingerspot Personnel desktop app itself uses to pull cloud scans, so it needs no API SDK
+// subscription and no paid Developer API — just the free "API Key untuk Fingerspot Personnel". From Downloader.exe:
+//   GET {base}/api/desktop/attendance_log?apikey=<key>&cloud_id=<id>&tgl=<Y-m-d>   (tgl = the day data reached the cloud)
+//   reply {success, total, data:[{PIN, "Date Time", "Verify Type", "Log Type", "Work Code"}]}, up to 60 days back.
 
-/** The Developer API get_attlog endpoint, used with the Personnel Bearer token. */
-function cloud_dev_url()
+/** Base of the Personnel desktop API (url_server in Fingerspot Personnel). */
+function cloud_ds_base()
 {
     global $CONFIG;
-    return !empty($CONFIG['fingerspot_dev_url']) ? $CONFIG['fingerspot_dev_url'] : 'https://developer.fingerspot.io/api/get_attlog';
+    return rtrim(!empty($CONFIG['fingerspot_ds_url']) ? $CONFIG['fingerspot_ds_url'] : 'https://api-ds.fingerspot.io', '/');
 }
 
-/** Normalise one Developer API row ({pin, scan_date, verify, status_scan}) to what cloud_download inserts, or null. */
-function cloud_row_dev($r)
+/** Normalise one desktop-API row to what cloud_download inserts, or null. */
+function cloud_row_ds($r)
 {
-    $pin = isset($r['pin']) ? trim((string)$r['pin']) : '';
-    $dt = isset($r['scan_date']) ? (string)$r['scan_date'] : '';
+    $pin = isset($r['PIN']) ? trim((string)$r['PIN']) : '';
+    $dt = isset($r['Date Time']) ? (string)$r['Date Time'] : '';
     if ($pin === '' || !strtotime($dt)) return null;
     return ['pin' => $pin, 'scan_date' => date('Y-m-d H:i:s', strtotime($dt)),
-            'verify' => isset($r['verify']) ? (int)$r['verify'] : 1, 'type_id' => isset($r['status_scan']) ? (int)$r['status_scan'] : 0];
+            'verify' => isset($r['Verify Type']) ? (int)$r['Verify Type'] : 1, 'type_id' => isset($r['Log Type']) ? (int)$r['Log Type'] : 0,
+            'work_code' => isset($r['Work Code']) ? (int)$r['Work Code'] : 0];
 }
 
-/** One Developer API get_attlog call for a device, window $start..$end (at most 2 days). Returns [rows, error]. */
-function cloud_get_attlog_dev($cloudId, $start, $end)
+/** One desktop-API attendance_log call for a device and upload date (Y-m-d). Returns [rows, error]. */
+function cloud_get_attlog_ds($cloudId, $date)
 {
-    $ch = curl_init(cloud_dev_url());
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_TIMEOUT => 60, CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . cloud_token(), 'Content-Type: application/json', 'Accept: application/json'],
-        CURLOPT_POSTFIELDS => json_encode(['trans_id' => (string)mt_rand(1, 2000000000), 'cloud_id' => $cloudId, 'start_date' => $start, 'end_date' => $end])]);
+    $url = cloud_ds_base() . '/api/desktop/attendance_log?' . http_build_query(['apikey' => cloud_token(), 'cloud_id' => $cloudId, 'tgl' => $date]);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
     $raw = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
-    if ($raw === false) return [[], 'Tidak bisa terhubung ke developer.fingerspot.io: ' . $err];
+    if ($raw === false) return [[], 'Tidak bisa terhubung ke api-ds.fingerspot.io: ' . $err];
     $json = json_decode($raw, true);
-    if (!is_array($json)) return [[], "HTTP $http: " . substr(strip_tags($raw), 0, 150)];
-    if (empty($json['success'])) {
-        $msg = isset($json['message']) ? (string)$json['message'] : (isset($json['msg']) ? (string)$json['msg'] : "gagal (HTTP $http)");
-        return [[], ($http === 401 ? 'token salah/kadaluarsa — ' : '') . 'Developer API: ' . $msg];
-    }
+    if (!is_array($json)) return [[], $http === 404 ? 'HTTP 404 — apikey Fingerspot Personnel salah atau belum aktif' : "HTTP $http: " . substr(strip_tags($raw), 0, 120)];
+    if (isset($json['success']) && !$json['success']) return [[], 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : 'gagal')];
     $rows = [];
-    foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_dev($r)) $rows[] = $row;
+    foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
     return [$rows, null];
 }
 
-/** Scans per [machine sn => ...] that reached Fingerspot.io on $from..$to, pulled via the Developer API. */
+/** Scans per [machine sn => ...] that reached Fingerspot.io on $from..$to (one request per machine per upload date). */
 function cloud_download($from, $to, $sns = [], $gps = false)
 {
     @set_time_limit(600);
     ensure_cloud_tables();
     $known = array_flip(q('SELECT pegawai_pin FROM pegawai')->fetchAll(PDO::FETCH_COLUMN));
-    $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, 0, 0)');
+    $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, ?, 0)');
     $targets = [];
     // Cloud IDs are upper-case hex on Fingerspot.io
     foreach (cloud_devices() as $d) if (!$sns || in_array($d['sn'], $sns, true)) $targets[$d['sn']] = [strtoupper(trim($d['cloud_id'])), $d['device_name']];
     $out = [];
     foreach ($targets as $sn => $t) {
         $res = ['name' => $t[1], 'received' => 0, 'added' => 0, 'unknown_pins' => [], 'errors' => []];
-        for ($day = $from; $day <= $to; $day = date('Y-m-d', strtotime($day . ' +2 day'))) {   // 2-day windows (API limit)
-            $end = min($to, date('Y-m-d', strtotime($day . ' +1 day')));
-            list($rows, $err) = cloud_get_attlog_dev($t[0], $day, $end);
+        for ($day = $from; $day <= $to; $day = date('Y-m-d', strtotime($day . ' +1 day'))) {
+            list($rows, $err) = cloud_get_attlog_ds($t[0], $day);
             if ($err) {
                 $res['errors'][] = "$day: $err";
-                if (preg_match('/HTTP 40|token/i', $err)) break;   // auth/quota: later windows will fail too
+                if (preg_match('/HTTP 40|apikey|masa/i', $err)) break;   // auth problem: later days fail too
                 continue;
             }
             foreach ($rows as $r) {
                 $res['received']++;
-                $ins->execute([$sn, $r['scan_date'], $r['pin'], $r['verify'], $r['type_id']]);
+                $ins->execute([$sn, $r['scan_date'], $r['pin'], $r['verify'], $r['type_id'], $r['work_code']]);
                 $res['added'] += $ins->rowCount();
                 if (!isset($known[$r['pin']])) $res['unknown_pins'][$r['pin']] = true;
             }
@@ -161,7 +161,6 @@ function cloud_download($from, $to, $sns = [], $gps = false)
         $res['unknown_pins'] = array_keys($res['unknown_pins']);
         $out[$sn] = $res;
     }
-    // GPS scans from the FiO app are not part of the Developer API get_attlog; see the Absensi GPS report on Fingerspot.io.
     return $out;
 }
 

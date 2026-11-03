@@ -20,12 +20,12 @@ $n = nearest_geofence(-7.2779, 112.6529, $f);
 check('outside', $n[2], false);
 check('no fences', nearest_geofence(-7.2, 112.6, []), null);
 
-// ---- Developer API path ----
-check('dev url default', cloud_dev_url(), 'https://developer.fingerspot.io/api/get_attlog');
-$d = cloud_row_dev(['pin' => '1', 'scan_date' => '2020-07-25 11:11:29', 'verify' => 4, 'status_scan' => 1]);
-check('dev row', [$d['pin'], $d['scan_date'], $d['verify'], $d['type_id']], ['1', '2020-07-25 11:11:29', 4, 1]);
-check('dev row no scan', cloud_row_dev(['pin' => '1']), null);
-check('dev row defaults', cloud_row_dev(['pin' => '9', 'scan_date' => '2020-07-25 08:00'])['type_id'], 0);
+// ---- Personnel desktop API path ----
+check('ds base default', cloud_ds_base(), 'https://api-ds.fingerspot.io');
+$d = cloud_row_ds(['PIN' => '1', 'Date Time' => '2020-07-25 11:11:29', 'Verify Type' => 4, 'Log Type' => 1, 'Work Code' => 7]);
+check('ds row', [$d['pin'], $d['scan_date'], $d['verify'], $d['type_id'], $d['work_code']], ['1', '2020-07-25 11:11:29', 4, 1, 7]);
+check('ds row no scan', cloud_row_ds(['PIN' => '1']), null);
+check('ds row defaults', cloud_row_ds(['PIN' => '9', 'Date Time' => '2020-07-25 08:00'])['type_id'], 0);
 
 // ---- .xlsx import helpers ----
 check('xlsx string date', xlsx_datetime('2024-08-05 10:37:00'), '2024-08-05 10:37:00');
