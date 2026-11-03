@@ -88,26 +88,32 @@ function cloud_get_attlog($cloudId, $uploadDate)
 }
 
 // ---------- Fingerspot Personnel desktop API (active path, free) ----------
-// The endpoint the Fingerspot Personnel desktop app itself uses (found in Downloader.exe), so it needs no API SDK
-// subscription and no paid Developer API — only the free "API Key untuk Fingerspot Personnel". Same signed URL as the
-// SDK, on another host (the server only matches it with exactly these 8 segments):
-//   GET https://api-ds.fingerspot.io/api/desktop/attendance_log/{cloud_id}/{upload_date}/6/date_time/asc/json/{auth}/{now}
-//   auth = MD5(cloud_id . upload_date . now . key), now = YmdHis; up to 60 days back.
+// The endpoint the Fingerspot Personnel desktop app itself uses (captured from its traffic), so it needs no API SDK
+// subscription and no paid Developer API — only the free Personnel API key. Every parameter is a path segment, GET:
+//   {base}/{apikey}/{cloud_id}/{date}/{req_ts}/{token}/3/0/     date = Y-m-d (one day), req_ts = YmdHis, 3 = comm type "web"
+//   token = 32-char lowercase MD5 signature; device_last_data uses MD5(cloud_id . apikey), see cloud_ds_token().
+// Reply {success, total, data:[{PIN, Name, "Date Time", "Log Type", "Verify Type", "Work Code", "IO Mode"}]}.
 
-/** Base of the Personnel desktop API (url_server + path in Fingerspot Personnel). */
+/** Base of the Personnel desktop API attendance_log endpoint. */
 function cloud_ds_base()
 {
     global $CONFIG;
     return rtrim(!empty($CONFIG['fingerspot_ds_url']) ? $CONFIG['fingerspot_ds_url'] : 'https://api-ds.fingerspot.io/api/desktop/attendance_log', '/');
 }
 
-/** The signed request URL for one machine and upload day; $now = YmdHis. */
-function cloud_ds_url($cloudId, $uploadDate, $key, $now)
+/** The per-request signature for one device and day (recipe confirmed with cloud.php?probe). */
+function cloud_ds_token($cloudId, $date, $key, $now)
 {
-    return cloud_ds_base() . '/' . rawurlencode($cloudId) . "/$uploadDate/6/date_time/asc/json/" . md5($cloudId . $uploadDate . $now . $key) . "/$now";
+    return md5($cloudId . $key);
 }
 
-/** Diagnostic: the reply of api-ds to each plausible signing recipe, [label => message]. A recipe the server accepts is not "Access Denied". */
+/** The request URL for one machine and day; $now = YmdHis. */
+function cloud_ds_url($cloudId, $date, $key, $now)
+{
+    return cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/" . cloud_ds_token($cloudId, $date, $key, $now) . '/3/0/';
+}
+
+/** Diagnostic: the reply of api-ds to each plausible token recipe, [label => message]. A recipe the server accepts is not "Access Denied". */
 function cloud_ds_probe($cloudId, $date)
 {
     $key = cloud_token();
@@ -115,23 +121,22 @@ function cloud_ds_probe($cloudId, $date)
     $parts = ['c' => $cloudId, 'd' => $date, 'n' => $now, 'k' => $key];
     $perms = [];
     $permute = function ($items, $acc = []) use (&$permute, &$perms) {
-        if (!$items) { $perms[] = $acc; return; }
+        if ($acc) $perms[] = $acc;
         foreach ($items as $i => $it) { $rest = $items; unset($rest[$i]); $permute($rest, array_merge($acc, [$it])); }
     };
     $permute(['c', 'd', 'n', 'k']);
-    $permute(['c', 'n', 'k']);
-    $permute(['c', 'd', 'k']);
-    $recipes = [];
-    foreach ($perms as $p) foreach (['md5', 'sha1'] as $algo) foreach (['', 'UPPER '] as $case) $recipes[$case . $algo . ' ' . implode('', $p)] = [$algo, $p, $case !== ''];
     $out = [];
-    foreach ($recipes as $label => $r) {
-        $auth = hash($r[0], implode('', array_map(function ($x) use ($parts) { return $parts[$x]; }, $r[1])));
-        if ($r[2]) $auth = strtoupper($auth);   // Indy's HashStringAsHex is upper-case
-        $ch = curl_init(cloud_ds_base() . '/' . rawurlencode($cloudId) . "/$date/6/date_time/asc/json/$auth/$now");
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
-        $raw = (string)curl_exec($ch);
-        curl_close($ch);
-        $out[$label] = substr(str_replace($key, '***', preg_replace('/\s+/', ' ', $raw)), 0, 120);
+    foreach ($perms as $p) {
+        if (!in_array('k', $p) || !in_array('c', $p)) continue;   // the signature needs at least the cloud id and the key
+        foreach (['', 'UPPER '] as $case) {
+            $token = md5(implode('', array_map(function ($x) use ($parts) { return $parts[$x]; }, $p)));
+            if ($case) $token = strtoupper($token);
+            $ch = curl_init(cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/$token/3/0/");
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
+            $raw = (string)curl_exec($ch);
+            curl_close($ch);
+            $out[$case . 'md5 ' . implode('', $p)] = substr(str_replace($key, '***', preg_replace('/\s+/', ' ', $raw)), 0, 120);
+        }
     }
     return $out;
 }
@@ -159,7 +164,7 @@ function cloud_get_attlog_ds($cloudId, $date)
     if ($raw === false) return [[], 'Tidak bisa terhubung ke api-ds.fingerspot.io: ' . $err];
     $json = json_decode($raw, true);
     if (!is_array($json)) return [[], "HTTP $http: " . substr(strip_tags($raw), 0, 120)];
-    if (empty($json['success'])) return [[], 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : substr($raw, 0, 100)) . ' (apikey Fingerspot Personnel salah / belum aktif?)'];
+    if (empty($json['success'])) return [[], 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : substr($raw, 0, 100)) . ' (kunci API salah atau permintaan tidak dikenal)'];
     $rows = [];
     foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
     return [$rows, null];
