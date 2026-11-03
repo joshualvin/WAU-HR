@@ -97,3 +97,28 @@ function all_reports($boss, $map)
     }
     return array_keys($out);
 }
+
+// ---------- month calendar ----------
+
+/** First day of the month of $ym ('Y-m'), falling back to the month of $fallback (Y-m-d) when $ym is not a month. */
+function calendar_month($ym, $fallback)
+{
+    return preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string)$ym) ? $ym . '-01' : date('Y-m-01', strtotime($fallback));
+}
+
+/**
+ * The weeks of a month for a grid, Monday first: a list of weeks, each a list of 7 dates (Y-m-d) from the Monday on or before the 1st
+ * to the Sunday on or after the last day. $first = first day of the month.
+ */
+function calendar_weeks($first)
+{
+    $last = date('Y-m-t', strtotime($first));
+    $d = date('Y-m-d', strtotime($first . ' -' . ((int)date('N', strtotime($first)) - 1) . ' days'));
+    $weeks = [];
+    while ($d <= $last) {
+        $w = [];
+        for ($i = 0; $i < 7; $i++) { $w[] = $d; $d = date('Y-m-d', strtotime($d . ' +1 day')); }
+        $weeks[] = $w;
+    }
+    return $weeks;
+}

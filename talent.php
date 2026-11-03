@@ -92,20 +92,22 @@ $who = function ($id, $name, $pin) { return '<div class="who"><span class="avata
 
 // ======================================================================= On/offboarding overview
 if ($p === 'onboarding'):
+    $only = isset($types[get('t')]) ? get('t') : '';   // the menu opens the list as Onboarding or Offboarding
     $lists = q('SELECT c.pegawai_id, c.type, p.pegawai_nama, p.pegawai_pin, COUNT(*) total, SUM(c.done_at IS NOT NULL) done,
                        SUM(c.done_at IS NULL AND c.due_date < CURDATE()) late, MIN(CASE WHEN c.done_at IS NULL THEN c.due_date END) next_due
                 FROM web_checklist c JOIN pegawai p ON p.pegawai_id = c.pegawai_id GROUP BY c.pegawai_id, c.type ORDER BY (SUM(c.done_at IS NULL) = 0), next_due')->fetchAll();
+    if ($only) $lists = array_values(array_filter($lists, function ($l) use ($only) { return $l['type'] === $only; }));
     $new = q('SELECT p.pegawai_id, p.pegawai_nama, p.pegawai_pin, p.tgl_mulai_kerja FROM pegawai p
               WHERE p.pegawai_status = 1 AND p.tgl_mulai_kerja >= ? AND NOT EXISTS (SELECT 1 FROM web_checklist c WHERE c.pegawai_id = p.pegawai_id AND c.type = ?)',
              [date('Y-m-d', strtotime('-90 days')), 'onboarding'])->fetchAll();
-    hris_header('On/offboarding', 'employee', 'talent.php?p=onboarding', 'Karyawan', '<a class="btn" href="talent.php?p=templates">Atur template</a>'); ?>
+    hris_header($only ? $types[$only] : 'On/offboarding', 'employee', 'talent.php?p=onboarding' . ($only ? '&t=' . $only : '&t=onboarding'), 'Karyawan', '<a class="btn" href="talent.php?p=templates">Atur template</a>'); ?>
   <?php if ($new): ?><div class="notice"><div><b><?= count($new) ?> karyawan baru belum punya checklist onboarding</b>
     <?php foreach ($new as $n): ?><form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="start"><input type="hidden" name="type" value="onboarding">
       <input type="hidden" name="pegawai_id" value="<?= (int)$n['pegawai_id'] ?>"><input type="hidden" name="start" value="<?= h($n['tgl_mulai_kerja']) ?>">
       <button class="btn small">Mulai onboarding <?= h($n['pegawai_nama']) ?></button></form> <?php endforeach; ?></div></div><?php endif; ?>
   <form class="toolbar" method="post"><?= $csrf ?><input type="hidden" name="action" value="start">
     <select name="pegawai_id" required><option value="">Pilih karyawan…</option><?php foreach (employees(false) as $e): ?><option value="<?= (int)$e['pegawai_id'] ?>"><?= h($e['pegawai_nama']) ?></option><?php endforeach; ?></select>
-    <select name="type"><?php foreach ($types as $k => $label): ?><option value="<?= $k ?>"><?= $label ?></option><?php endforeach; ?></select><input type="date" name="start" value="<?= date('Y-m-d') ?>" title="Tanggal mulai / hari terakhir">
+    <select name="type"><?php foreach ($types as $k => $label): ?><option value="<?= $k ?>"<?= $only === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach; ?></select><input type="date" name="start" value="<?= date('Y-m-d') ?>" title="Tanggal mulai / hari terakhir">
     <button class="btn primary">Mulai checklist</button></form>
   <div class="tablecard"><div class="tablescroll"><table>
     <thead><tr><th>Nama karyawan</th><th>Jenis</th><th>Progres</th><th>Tugas berikutnya</th><th>Terlambat</th><th class="actions">Aksi</th></tr></thead><tbody>
@@ -124,7 +126,7 @@ elseif ($p === 'checklist'):
     $emp = employee($id);
     if (!$emp) redirect('talent.php');
     $tasks = q('SELECT * FROM web_checklist WHERE pegawai_id = ? AND type = ? ORDER BY sort, due_date, id', [$id, $type])->fetchAll();
-    hris_header($types[$type] . ' · ' . $emp['pegawai_nama'], 'employee', 'talent.php?p=onboarding', '<a href="talent.php">On/offboarding</a>',
+    hris_header($types[$type] . ' · ' . $emp['pegawai_nama'], 'employee', 'talent.php?p=onboarding&t=' . $type, '<a href="talent.php">On/offboarding</a>',
         '<a class="btn" href="hr.php?m=employee&id=' . $id . '">Profil karyawan</a>'); ?>
   <?php if (!$tasks): ?>
     <form class="section" method="post"><?= $csrf ?><input type="hidden" name="action" value="start"><input type="hidden" name="type" value="<?= h($type) ?>"><input type="hidden" name="pegawai_id" value="<?= $id ?>">
@@ -153,7 +155,7 @@ elseif ($p === 'checklist'):
 elseif ($p === 'templates'):
     $type = isset($types[get('type')]) ? get('type') : 'onboarding';
     $tpl = q('SELECT * FROM web_checklist_tpl WHERE type = ? ORDER BY sort, id', [$type])->fetchAll();
-    hris_header('Template ' . strtolower($types[$type]), 'employee', 'talent.php?p=onboarding', '<a href="talent.php">On/offboarding</a>'); ?>
+    hris_header('Template ' . strtolower($types[$type]), 'employee', 'talent.php?p=onboarding&t=' . $type, '<a href="talent.php">On/offboarding</a>'); ?>
   <nav class="tabs"><?php foreach ($types as $k => $label): ?><a class="<?= $k === $type ? 'on' : '' ?>" href="talent.php?p=templates&type=<?= $k ?>"><?= $label ?></a><?php endforeach; ?></nav>
   <form method="post"><?= $csrf ?><input type="hidden" name="action" value="tpl_save"><input type="hidden" name="type" value="<?= h($type) ?>">
   <div class="tablecard"><div class="tablescroll"><table>
