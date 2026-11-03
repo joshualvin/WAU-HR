@@ -1,12 +1,14 @@
 <?php
-// Download scans from Fingerspot.io with its API SDK (Quick Guide API SDK Fingerspot.io) into att_log.
-//   GET https://api.fingerspot.io/api/download/attendance_log/{cloud_id}/{upload_date}/6/date_time/asc/json/{auth}/{now}
-//   auth = MD5(cloud_id . upload_date . now . API key), now = YmdHis. upload_date is the day the scans REACHED
-//   Fingerspot.io (they may be older), one request per machine per day, at most 100 requests a day per account.
-// Machine scans: sn = machine serial. GPS scans from the FiO phone app (cloud_id "0-" . API key, AddOn "API SDK scan
-// GPS App FiO"): sn = 'FIO', with location, address and phone kept in web_gps_scan.
-// API key: 'fingerspot_api_key' in config.php (Fingerspot.io → Pengaturan → Pengaturan Umum → API SDK → API Key);
-// the older name 'fingerspot_token' is read too. It is never shown in the app.
+// Download scans from Fingerspot.io into att_log. Uses the Fingerspot Developer API (the one Fingerspot Personnel
+// uses), which needs no per-machine "API SDK" subscription:
+//   POST https://developer.fingerspot.io/api/get_attlog   Authorization: Bearer <token>
+//   body {trans_id, cloud_id, start_date, end_date}  — up to 60 days back, at most 2 days per request.
+//   reply {success, data:[{pin, scan_date, verify, status_scan, ...}]}.
+// Token: 'fingerspot_api_key' in config.php = the "API Key untuk Fingerspot Personnel" on Fingerspot.io
+// (the older name 'fingerspot_token' is read too). It is never shown in the app.
+// The old per-machine API SDK (api.fingerspot.io, MD5 auth) is kept below in cloud_url()/cloud_get_attlog() for
+// reference; the active path is the Developer API. Attendance can also be imported from the .xlsx Fingerspot.io
+// exports (Laporan → Absensi Perangkat) via cloud_import_xlsx().
 
 const CLOUD_GPS_SN = 'FIO';
 
@@ -85,41 +87,176 @@ function cloud_get_attlog($cloudId, $uploadDate)
     return [$rows, null];
 }
 
-/** Scans per [machine sn => ...] that reached Fingerspot.io on $from..$to (one request per machine per day). */
+// ---------- Developer API (active path) ----------
+
+/** The Developer API get_attlog endpoint, used with the Personnel Bearer token. */
+function cloud_dev_url()
+{
+    global $CONFIG;
+    return !empty($CONFIG['fingerspot_dev_url']) ? $CONFIG['fingerspot_dev_url'] : 'https://developer.fingerspot.io/api/get_attlog';
+}
+
+/** Normalise one Developer API row ({pin, scan_date, verify, status_scan}) to what cloud_download inserts, or null. */
+function cloud_row_dev($r)
+{
+    $pin = isset($r['pin']) ? trim((string)$r['pin']) : '';
+    $dt = isset($r['scan_date']) ? (string)$r['scan_date'] : '';
+    if ($pin === '' || !strtotime($dt)) return null;
+    return ['pin' => $pin, 'scan_date' => date('Y-m-d H:i:s', strtotime($dt)),
+            'verify' => isset($r['verify']) ? (int)$r['verify'] : 1, 'type_id' => isset($r['status_scan']) ? (int)$r['status_scan'] : 0];
+}
+
+/** One Developer API get_attlog call for a device, window $start..$end (at most 2 days). Returns [rows, error]. */
+function cloud_get_attlog_dev($cloudId, $start, $end)
+{
+    $ch = curl_init(cloud_dev_url());
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_TIMEOUT => 60, CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . cloud_token(), 'Content-Type: application/json', 'Accept: application/json'],
+        CURLOPT_POSTFIELDS => json_encode(['trans_id' => (string)mt_rand(1, 2000000000), 'cloud_id' => $cloudId, 'start_date' => $start, 'end_date' => $end])]);
+    $raw = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($raw === false) return [[], 'Tidak bisa terhubung ke developer.fingerspot.io: ' . $err];
+    $json = json_decode($raw, true);
+    if (!is_array($json)) return [[], "HTTP $http: " . substr(strip_tags($raw), 0, 150)];
+    if (empty($json['success'])) {
+        $msg = isset($json['message']) ? (string)$json['message'] : (isset($json['msg']) ? (string)$json['msg'] : "gagal (HTTP $http)");
+        return [[], ($http === 401 ? 'token salah/kadaluarsa — ' : '') . 'Developer API: ' . $msg];
+    }
+    $rows = [];
+    foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_dev($r)) $rows[] = $row;
+    return [$rows, null];
+}
+
+/** Scans per [machine sn => ...] that reached Fingerspot.io on $from..$to, pulled via the Developer API. */
 function cloud_download($from, $to, $sns = [], $gps = false)
 {
     @set_time_limit(600);
     ensure_cloud_tables();
     $known = array_flip(q('SELECT pegawai_pin FROM pegawai')->fetchAll(PDO::FETCH_COLUMN));
-    $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, 0, ?)');
-    $gpsIns = db()->prepare('REPLACE INTO web_gps_scan (pin, scan_date, type_id, type, lat, lng, address, phone, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, 0, 0)');
     $targets = [];
-    // Cloud IDs are upper-case hex on Fingerspot.io; the auth code is case-sensitive
+    // Cloud IDs are upper-case hex on Fingerspot.io
     foreach (cloud_devices() as $d) if (!$sns || in_array($d['sn'], $sns, true)) $targets[$d['sn']] = [strtoupper(trim($d['cloud_id'])), $d['device_name']];
-    if ($gps) $targets[CLOUD_GPS_SN] = ['0-' . cloud_token(), 'Scan GPS App FiO'];
     $out = [];
     foreach ($targets as $sn => $t) {
         $res = ['name' => $t[1], 'received' => 0, 'added' => 0, 'unknown_pins' => [], 'errors' => []];
-        for ($day = $from; $day <= $to; $day = date('Y-m-d', strtotime($day . ' +1 day'))) {
-            list($rows, $err) = cloud_get_attlog($t[0], $day);
+        for ($day = $from; $day <= $to; $day = date('Y-m-d', strtotime($day . ' +2 day'))) {   // 2-day windows (API limit)
+            $end = min($to, date('Y-m-d', strtotime($day . ' +1 day')));
+            list($rows, $err) = cloud_get_attlog_dev($t[0], $day, $end);
             if ($err) {
                 $res['errors'][] = "$day: $err";
-                if (preg_match('/IO_API_ERR_[1-7]|HTTP 40/', $err)) break;   // will not get better on the next day
+                if (preg_match('/HTTP 40|token/i', $err)) break;   // auth/quota: later windows will fail too
                 continue;
             }
             foreach ($rows as $r) {
                 $res['received']++;
-                $ins->execute([$sn, $r['scan_date'], $r['pin'], $r['verify'], $r['type_id'], $sn === CLOUD_GPS_SN ? 'fio' : '0']);
+                $ins->execute([$sn, $r['scan_date'], $r['pin'], $r['verify'], $r['type_id']]);
                 $res['added'] += $ins->rowCount();
-                if ($sn === CLOUD_GPS_SN) $gpsIns->execute([$r['pin'], $r['scan_date'], $r['type_id'], mb_substr($r['type'], 0, 60), $r['lat'], $r['lng'], mb_substr($r['address'], 0, 255), mb_substr($r['phone'], 0, 60), mb_substr($r['location'], 0, 100)]);
                 if (!isset($known[$r['pin']])) $res['unknown_pins'][$r['pin']] = true;
             }
         }
-        if ($sn !== CLOUD_GPS_SN && (!$res['errors'] || $res['received'])) q('UPDATE device SET last_download_web = ? WHERE sn = ?', [date('Y-m-d'), $sn]);
+        if (!$res['errors'] || $res['received']) q('UPDATE device SET last_download_web = ? WHERE sn = ?', [date('Y-m-d'), $sn]);
         $res['unknown_pins'] = array_keys($res['unknown_pins']);
         $out[$sn] = $res;
     }
+    // GPS scans from the FiO app are not part of the Developer API get_attlog; see the Absensi GPS report on Fingerspot.io.
     return $out;
+}
+
+// ---------- Import from a Fingerspot.io .xlsx export (Laporan → Absensi Perangkat / Absensi GPS) ----------
+
+/** Read the first worksheet of an .xlsx into rows of [column letter => cell text]. No external library. */
+function xlsx_rows($path)
+{
+    $zip = new ZipArchive();
+    if ($zip->open($path) !== true) throw new Exception('File bukan .xlsx yang valid.');
+    $shared = [];
+    if (($s = $zip->getFromName('xl/sharedStrings.xml')) !== false && ($sx = @simplexml_load_string($s)))
+        foreach ($sx->si as $si) { $t = ''; foreach ($si->xpath('.//*[local-name()="t"]') as $n) $t .= (string)$n; $shared[] = $t; }
+    $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
+    $zip->close();
+    if ($sheet === false || !($xml = @simplexml_load_string($sheet))) throw new Exception('Sheet tidak terbaca.');
+    $rows = [];
+    foreach ($xml->sheetData->row as $row) {
+        $cells = [];
+        foreach ($row->c as $c) {
+            $col = preg_replace('/\d+/', '', (string)$c['r']);
+            if ((string)$c['t'] === 's') $cells[$col] = isset($shared[(int)$c->v]) ? $shared[(int)$c->v] : '';
+            elseif ((string)$c['t'] === 'inlineStr') $cells[$col] = (string)$c->is->t;
+            else $cells[$col] = (string)$c->v;
+        }
+        $rows[] = $cells;
+    }
+    return $rows;
+}
+
+/** Convert an Excel serial date, or pass a string through, to 'Y-m-d H:i:s' or '' when unparseable. */
+function xlsx_datetime($v)
+{
+    $v = trim($v);
+    if ($v === '') return '';
+    if (is_numeric($v)) return date('Y-m-d H:i:s', (int)round(((float)$v - 25569) * 86400));   // Excel epoch 1899-12-30 → Unix
+    return ($t = strtotime($v)) ? date('Y-m-d H:i:s', $t) : '';
+}
+
+/** Map a Fingerspot status/type cell to inoutmode (0 in, 1 out, 2 break in, 3 break out); numeric passes through. */
+function xlsx_status($v)
+{
+    $v = strtolower(trim($v));
+    if ($v === '' ) return 0;
+    if (is_numeric($v)) return (int)$v;
+    if (strpos($v, 'mulai istirahat') !== false || strpos($v, 'break in') !== false) return 2;
+    if (strpos($v, 'selesai istirahat') !== false || strpos($v, 'break out') !== false) return 3;
+    if (strpos($v, 'pulang') !== false || strpos($v, 'out') !== false) return 1;
+    return 0;   // masuk / scan in / anything else
+}
+
+/**
+ * Import attendance from a Fingerspot.io .xlsx export into att_log. Matches columns by header name (English or
+ * Indonesian, combined "Time Scan" or split "Tanggal Absensi" + "Jam Absensi"). Returns a cloud_download-style result.
+ */
+function cloud_import_xlsx($path)
+{
+    $rows = xlsx_rows($path);
+    // find the header row: the first with a cell containing 'cloud' or exactly 'pin'/'id'
+    $h = -1;
+    foreach ($rows as $i => $r) { $j = implode('|', array_map('strtolower', $r)); if (strpos($j, 'cloud') !== false || preg_match('/\bpin\b/', $j)) { $h = $i; break; } }
+    if ($h < 0) throw new Exception('Baris judul tidak ditemukan (cari kolom Cloud ID / PIN).');
+    $col = [];
+    foreach ($rows[$h] as $l => $text) {
+        $t = strtolower(trim($text));
+        if (strpos($t, 'cloud') !== false) $col['cloud'] = $l;
+        elseif ($t === 'pin' || $t === 'id') $col['pin'] = $l;
+        elseif (strpos($t, 'jam') !== false) $col['time'] = $l;                                   // split time column
+        elseif (strpos($t, 'time') !== false || strpos($t, 'tanggal absensi') !== false || $t === 'scan') $col['date'] = $l;
+        elseif (strpos($t, 'veri') !== false) $col['verify'] = $l;
+        elseif ($t === 'status' || strpos($t, 'tipe') !== false) $col['status'] = $l;
+    }
+    foreach (['cloud', 'pin', 'date'] as $need) if (!isset($col[$need])) throw new Exception('Kolom wajib tidak ada: Cloud ID, PIN, dan tanggal scan.');
+    $map = q("SELECT UPPER(cloud_id) c, sn FROM device WHERE cloud_id <> ''")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $known = array_flip(q('SELECT pegawai_pin FROM pegawai')->fetchAll(PDO::FETCH_COLUMN));
+    $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, 0, 0)');
+    $res = ['name' => basename($path), 'received' => 0, 'added' => 0, 'unknown_pins' => [], 'unknown_cloud' => [], 'errors' => []];
+    foreach (array_slice($rows, $h + 1) as $r) {
+        $cloud = strtoupper(trim(isset($r[$col['cloud']]) ? $r[$col['cloud']] : ''));
+        $pin = trim(isset($r[$col['pin']]) ? $r[$col['pin']] : '');
+        if ($cloud === '' && $pin === '') continue;   // blank row
+        $date = isset($r[$col['date']]) ? $r[$col['date']] : '';
+        $time = isset($col['time'], $r[$col['time']]) ? $r[$col['time']] : '';
+        $when = xlsx_datetime(trim($date . ' ' . $time));
+        if (!isset($map[$cloud])) { $res['unknown_cloud'][$cloud] = true; continue; }
+        if ($pin === '' || $when === '') continue;
+        $res['received']++;
+        $ins->execute([$map[$cloud], $when, $pin, isset($col['verify']) && is_numeric($r[$col['verify']] ?? '') ? (int)$r[$col['verify']] : 1,
+                       xlsx_status(isset($col['status']) ? ($r[$col['status']] ?? '') : '')]);
+        $res['added'] += $ins->rowCount();
+        if (!isset($known[$pin])) $res['unknown_pins'][$pin] = true;
+    }
+    $res['unknown_pins'] = array_keys($res['unknown_pins']);
+    $res['unknown_cloud'] = array_keys(array_filter($res['unknown_cloud'], 'strlen'));
+    return $res;
 }
 
 // ---------- GPS scans and geofences ----------

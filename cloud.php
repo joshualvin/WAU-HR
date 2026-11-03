@@ -19,19 +19,24 @@ $error = '';
 $from = post('from', get('from', $defFrom));
 $to = post('to', get('to', date('Y-m-d')));
 $picked = isset($_POST['sn']) ? array_map('strval', (array)$_POST['sn']) : array_column($devices, 'sn');
-$gps = $_SERVER['REQUEST_METHOD'] === 'POST' ? (bool)post('gps') : true;
-$days = (int)((strtotime($to) - strtotime($from)) / 86400) + 1;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['xlsx']) && $_FILES['xlsx']['name'] !== '') {
+    check_csrf();
+    try {
+        if (($_FILES['xlsx']['error'] ?? 1) !== 0) throw new Exception('Upload file gagal.');
+        $results = ['import' => cloud_import_xlsx($_FILES['xlsx']['tmp_name'])];
+        audit('cloud_import_xlsx', $_FILES['xlsx']['name'] . ': ' . $results['import']['added'] . ' scan baru');
+        $devices = cloud_devices();
+    } catch (Exception $e) { $error = 'Impor gagal: ' . $e->getMessage(); }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
     if (!$hasToken) $error = 'API key Fingerspot.io belum diisi di config.php.';
     elseif (!valid_date($from) || !valid_date($to) || $to < $from) $error = 'Isi rentang tanggal yang benar.';
     elseif ($from < $oldest) $error = 'fingerspot.io hanya menyimpan data 60 hari terakhir (mulai ' . fmt_date($oldest) . ').';
     elseif ($to > date('Y-m-d')) $error = 'Tanggal akhir tidak boleh setelah hari ini.';
-    elseif (!$picked && !$gps) $error = 'Pilih minimal satu mesin atau scan GPS.';
-    elseif ($days * (count($picked) + ($gps ? 1 : 0)) > 100) $error = 'Fingerspot.io membatasi 100 request per hari: ' . $days . ' hari × ' . (count($picked) + ($gps ? 1 : 0)) . ' sumber terlalu banyak. Perpendek rentang tanggal.';
+    elseif (!$picked) $error = 'Pilih minimal satu mesin.';
     else {
-        $results = cloud_download($from, $to, $picked, $gps);
+        $results = cloud_download($from, $to, $picked);
         $added = array_sum(array_column($results, 'added'));
         audit('cloud_download', "$from..$to: $added scan baru");
         $devices = cloud_devices();
@@ -42,7 +47,7 @@ page_header('Download Fingerspot.io', 'cloud.php');
 ?>
 <?php if (!$hasToken): ?>
   <div class="flash err">API key belum diisi. Tambahkan baris <code>'fingerspot_api_key' => 'API_KEY_ANDA',</code> di <code>config.php</code> di server
-    (Fingerspot.io → Pengaturan → Pengaturan Umum → API SDK → API Key), lalu muat ulang halaman ini.</div>
+    (Fingerspot.io: <b>API Key untuk Fingerspot Personnel</b> — bukan API SDK), lalu muat ulang halaman ini.</div>
 <?php endif; ?>
 <?php if ($error): ?><div class="flash err"><?= h($error) ?></div><?php endif; ?>
 
@@ -63,14 +68,23 @@ page_header('Download Fingerspot.io', 'cloud.php');
         </tr>
       <?php endforeach; ?>
       <?php if (!$devices): ?><tr><td colspan="6" class="muted">Tidak ada mesin dengan Cloud ID.</td></tr><?php endif; ?>
-      <tr><td><input type="checkbox" name="gps" value="1" <?= $gps ? 'checked' : '' ?>></td><td><b>Scan GPS App FiO</b></td><td>FIO</td><td colspan="3" class="muted">Absen dari aplikasi FiO di HP, dengan lokasi (perlu AddOn "API SDK scan GPS App FiO"). Lihat di <a href="gps.php">Scan GPS</a>.</td></tr>
     </table></div>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label style="flex-direction:row;align-items:center;gap:4px">Tanggal <input type="date" name="from" value="<?= h($from) ?>" min="<?= $oldest ?>" max="<?= date('Y-m-d') ?>"></label>
       <label style="flex-direction:row;align-items:center;gap:4px">s/d <input type="date" name="to" value="<?= h($to) ?>" min="<?= $oldest ?>" max="<?= date('Y-m-d') ?>"></label>
       <button class="btn primary" <?= $hasToken && $devices ? '' : 'disabled' ?>>Download</button>
-      <span class="muted">Tanggal = hari data <b>masuk</b> ke Fingerspot.io (scan bisa lebih lama). Satu request per sumber per hari, batas 100 request per hari. Scan yang sudah ada tidak ditambah dua kali.</span>
+      <span class="muted">Lewat API Fingerspot Personnel. Data tersedia 60 hari terakhir; scan yang sudah ada tidak ditambah dua kali.</span>
     </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Impor dari file Excel Fingerspot.io</h2>
+  <p class="muted">Alternatif tanpa API: di Fingerspot.io buka <b>Laporan → Absensi Perangkat</b>, pilih rentang tanggal, klik ikon Excel, lalu unggah file <code>.xlsx</code> itu di sini. Cloud ID pada file dicocokkan dengan mesin di atas.</p>
+  <form method="post" enctype="multipart/form-data" class="inline" onsubmit="document.body.classList.add('busy')">
+    <?= csrf_field() ?>
+    <input type="file" name="xlsx" accept=".xlsx" required>
+    <button class="btn">Impor</button>
   </form>
 </div>
 
@@ -86,7 +100,7 @@ page_header('Download Fingerspot.io', 'cloud.php');
         <td class="num"><b><?= (int)$r['added'] ?></b></td>
         <td class="num"><?= (int)$r['received'] - (int)$r['added'] ?></td>
         <td><?= h(implode(', ', $r['unknown_pins'])) ?></td>
-        <td class="<?= $r['errors'] ? 'late' : '' ?>" style="white-space:normal"><?= h(implode('; ', array_slice($r['errors'], 0, 3))) ?><?= count($r['errors']) > 3 ? ' (+' . (count($r['errors']) - 3) . ' lagi)' : '' ?></td>
+        <td class="<?= $r['errors'] ? 'late' : '' ?>" style="white-space:normal"><?= h(implode('; ', array_slice($r['errors'], 0, 3))) ?><?= count($r['errors']) > 3 ? ' (+' . (count($r['errors']) - 3) . ' lagi)' : '' ?><?= !empty($r['unknown_cloud']) ? ' Cloud ID tak dikenal: ' . h(implode(', ', $r['unknown_cloud'])) : '' ?></td>
       </tr>
     <?php endforeach; ?>
   </table></div>
