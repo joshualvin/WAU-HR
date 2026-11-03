@@ -9,11 +9,13 @@
 
 require_once __DIR__ . '/claims.php';
 require_once __DIR__ . '/payextra.php';
+require_once __DIR__ . '/paycomp.php';
 
 function ensure_payroll_tables()
 {
     ensure_claim_tables();
     ensure_payextra_tables();
+    ensure_paycomp_tables();
     db()->exec("CREATE TABLE IF NOT EXISTS web_pay_emp (
         pegawai_id INT NOT NULL PRIMARY KEY,
         gaji_pokok BIGINT NOT NULL DEFAULT 0,
@@ -209,28 +211,49 @@ function pay_data()
 }
 
 /**
- * Calculate one payroll period for every active employee who has a salary set up.
- * Returns pegawai_id => payslip array (all amounts in rupiah, integers).
+ * Calculate one payroll period for every employee with a salary who worked in it: active ones, and those who left
+ * during the period. Amounts in force at the end of the period (salary history, components); someone who joined or
+ * left mid-period gets the monthly items pro-rated by working days employed. Returns pegawai_id => payslip array.
  */
 function calculate_payroll($from, $to)
 {
     $s = payroll_settings();
-    $pays = pay_data();
+    $pays = pay_data_as_of($to);
+    $comps = components_as_of($to);
+    $defs = pay_components(false);
+    $holidays = q('SELECT libur_tgl FROM libur WHERE libur_tgl BETWEEN ? AND ?', [$from, $to])->fetchAll(PDO::FETCH_COLUMN);
     $approvedOt = $s['ot_requires_approval'] ? approved_overtime($from, $to) : null;
     $claims = reimbursements_for_period($to);
     $bonuses = bonuses_for_period($to);
     $loans = loan_deductions($to);
     $days = [];
     foreach (daily_attendance($from, $to) as $r) $days[$r['pegawai_id']][] = $r;
+    $staff = q('SELECT pegawai_id, pegawai_pin, pegawai_nama, pegawai_status, tgl_mulai_kerja, tgl_resign FROM pegawai
+                WHERE (pegawai_status = 1 OR tgl_resign >= ?) AND (tgl_mulai_kerja IS NULL OR tgl_mulai_kerja <= ?) ORDER BY pegawai_nama', [$from, $to])->fetchAll();
     $out = [];
-    foreach (employees(true) as $e) {
+    foreach ($staff as $e) {
         $id = $e['pegawai_id'];
         if (empty($pays[$id]) || $pays[$id]['gaji_pokok'] + $pays[$id]['tunjangan'] <= 0) continue;
+        $resign = $e['tgl_resign'] && $e['tgl_resign'] !== '0000-00-00' ? substr($e['tgl_resign'], 0, 10) : null;
+        if ($resign && $resign < $from) continue;                                   // left before this period
+        if (!isset($days[$id])) foreach (daily_attendance($from, $to, $id) as $r) $days[$id][] = $r;   // left during it: not in the active list
+        $start = $e['tgl_mulai_kerja'] && substr($e['tgl_mulai_kerja'], 0, 10) > $from ? substr($e['tgl_mulai_kerja'], 0, 10) : null;
+        $end = $resign && $resign < $to ? $resign : null;
+        $myDays = isset($days[$id]) ? $days[$id] : [];
+        list($mine, $all) = prorate_days($myDays, $start, $end);
+        if ($start) $all += workdays_before($myDays, $from, $start, $holidays);   // attendance starts at the start date
+        $factor = ($start || $end) && $all ? $mine / $all : 1;
+        $tag = $factor < 1 ? " (prorata $mine/$all hari kerja)" : '';
         $p = $pays[$id];
-        $wage = $p['gaji_pokok'] + $p['tunjangan'];
+        // components in force: fixed earnings count as wage (BPJS, overtime, absence)
+        $myComps = isset($comps[$id]) ? $comps[$id] : [];
+        $fixedComp = 0;
+        foreach ($myComps as $cid => $amt) if (isset($defs[$cid]) && $defs[$cid]['kind'] === 'earning' && $defs[$cid]['fixed'] && $defs[$cid]['per'] === 'month') $fixedComp += $amt;
+        $wage = $p['gaji_pokok'] + $p['tunjangan'] + $fixedComp;
         $hourly = $wage / $s['ot_divisor'];
         $c = ['workdays' => 0, 'present' => 0, 'absent' => 0, 'late_min' => 0, 'ot_min' => 0, 'ot_rest_min' => 0, 'ot_pay' => 0];
-        foreach (isset($days[$id]) ? $days[$id] : [] as $r) {
+        foreach ($myDays as $r) {
+            if (($start && $r['date'] < $start) || ($end && $r['date'] > $end)) continue;   // not employed that day
             if (!$r['off']) $c['workdays']++;
             if ($r['first'] || $r['last']) $c['present']++;
             if ($r['status'] === 'absent') $c['absent']++;
@@ -245,11 +268,19 @@ function calculate_payroll($from, $to)
             }
         }
         $earn = [
-            'Gaji pokok' => (int)$p['gaji_pokok'],
-            'Tunjangan tetap' => (int)$p['tunjangan'],
+            'Gaji pokok' . $tag => (int)round($p['gaji_pokok'] * $factor),
+            'Tunjangan tetap' . $tag => (int)round($p['tunjangan'] * $factor),
             'Uang makan / transport (' . $c['present'] . ' hari)' => (int)($p['uang_harian'] * $c['present']),
-            'Lembur' => $c['ot_pay'],
         ];
+        $compDeduct = [];
+        foreach ($myComps as $cid => $amt) {
+            if (!isset($defs[$cid])) continue;
+            $dfn = $defs[$cid];
+            $val = $dfn['per'] === 'day' ? $amt * $c['present'] : (int)round($amt * $factor);
+            $label = $dfn['name'] . ($dfn['per'] === 'day' ? ' (' . $c['present'] . ' hari)' : $tag);
+            if ($dfn['kind'] === 'earning') $earn[$label] = (int)$val; else $compDeduct[$label] = (int)$val;
+        }
+        $earn['Lembur'] = $c['ot_pay'];
         if (isset($bonuses[$id])) {
             $bn = $bonuses[$id];
             $pct = $bn['target'] > 0 ? round($bn['sales'] / $bn['target'] * 100, 1) : 0;
@@ -257,9 +288,9 @@ function calculate_payroll($from, $to)
             $earn['Bonus lain' . ($bn['note'] !== '' ? ' (' . $bn['note'] . ')' : '')] = (int)$bn['other_bonus'];
         }
         $deduct = [];
-        if ($s['absent_deduct'] && $c['absent'] && $c['workdays']) $deduct['Potongan tidak hadir (' . $c['absent'] . ' hari)'] = (int)round($wage / $c['workdays'] * $c['absent']);
+        if ($s['absent_deduct'] && $c['absent'] && $all) $deduct['Potongan tidak hadir (' . $c['absent'] . ' hari)'] = (int)round($wage / $all * $c['absent']);
         if ($s['late_per_minute'] && $c['late_min']) $deduct['Potongan terlambat (' . $c['late_min'] . ' menit)'] = (int)round($s['late_per_minute'] * $c['late_min']);
-        $b = bpjs($p, $s);
+        $b = bpjs(['tunjangan' => $p['tunjangan'] + $fixedComp] + $p, $s);
         $earnTotal = array_sum($earn) - array_sum($deduct);
         // approved reimbursements: paid with the salary but not income, so outside the PPh 21 gross
         $myClaims = isset($claims[$id]) ? $claims[$id] : [];
@@ -269,9 +300,10 @@ function calculate_payroll($from, $to)
         $bruto = $earnTotal + $b['jkk'] + $b['jkm'] + $b['kes_co'];
         $iuranEmp = $b['jht_emp'] + $b['jp_emp'];
         list($tax, $taxNote) = pph21($p, $bruto, $iuranEmp, $to, $id);
-        $empDeduct = ['BPJS Kesehatan (1%)' => $b['kes_emp'], 'BPJS JHT (2%)' => $b['jht_emp'], 'BPJS JP (1%)' => $b['jp_emp'], 'PPh 21' => $tax];
+        $empDeduct = ['BPJS Kesehatan (1%)' => $b['kes_emp'], 'BPJS JHT (2%)' => $b['jht_emp'], 'BPJS JP (1%)' => $b['jp_emp'], 'PPh 21' => $tax] + $compDeduct;
+        $compTotal = (int)array_sum($compDeduct);
         // kasbon installments: repayment, so after tax; never more than the pay left, the rest moves to the next period
-        $left = $earnTotal + (int)array_sum(array_column(isset($claims[$id]) ? $claims[$id] : [], 'jumlah')) - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax;
+        $left = $earnTotal + (int)array_sum(array_column(isset($claims[$id]) ? $claims[$id] : [], 'jumlah')) - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax - $compTotal;
         $myLoans = [];
         foreach (isset($loans[$id]) ? $loans[$id] : [] as $l) {
             $amt = (int)max(0, min($l[1], $left));
@@ -287,7 +319,7 @@ function calculate_payroll($from, $to)
             'earnings' => array_filter($earn), 'deductions' => array_filter($deduct + $empDeduct),
             'company' => ['BPJS Kesehatan (4%)' => $b['kes_co'], 'BPJS JHT (3,7%)' => $b['jht_co'], 'BPJS JP (2%)' => $b['jp_co'], 'BPJS JKK' => $b['jkk'], 'BPJS JKM' => $b['jkm']],
             'bruto' => $bruto, 'iuran_pensiun' => $iuranEmp, 'pph21' => $tax, 'pph21_note' => $taxNote,
-            'netto' => $earnTotal + $reimb - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax - $loanTotal,
+            'netto' => $earnTotal + $reimb - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax - $compTotal - $loanTotal, 'prorate' => $factor < 1 ? [$mine, $all] : null,
             'reimburse_ids' => array_map('intval', array_column($myClaims, 'id')),
             'loans' => $myLoans, 'kasbon' => $loanTotal,
         ];

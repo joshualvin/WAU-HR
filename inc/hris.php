@@ -30,7 +30,7 @@ function hris_modules()
         'recruit'  => ['Rekrutmen', 'brief', ['recruit.php?p=jobs' => 'Lowongan & kandidat', 'recruit.php?p=manpower' => 'Manpower planning', 'careers.php' => 'Halaman karir']],
         'performance' => ['Kinerja', 'star', ['talent.php?p=reviews' => 'Penilaian kinerja']],
         'report'   => ['Laporan', 'report', ['reports' => 'Semua laporan']],
-        'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=reimburse' => 'Reimbursement', 'payroll.php?p=bonus' => 'Bonus penjualan', 'payroll.php?p=loans' => 'Kasbon', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=bupot' => 'Bukti potong',
+        'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=reimburse' => 'Reimbursement', 'payroll.php?p=bonus' => 'Bonus penjualan', 'payroll.php?p=loans' => 'Kasbon', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=bupot' => 'Bukti potong', 'payroll.php?p=components' => 'Komponen gaji', 'payroll.php?p=settle' => 'Pesangon & penyelesaian',
                                                'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=settings' => 'Pengaturan gaji']],
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];

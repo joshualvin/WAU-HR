@@ -248,7 +248,9 @@ function thr_taxed($pegawaiId, $periodTo)
  */
 function calculate_thr($holiday, $payDate, $overrides = [])
 {
-    $pays = pay_data();
+    $pays = pay_data_as_of($holiday);
+    $comps = components_as_of($holiday);
+    $defs = pay_components(false);
     $out = [];
     foreach (q('SELECT pegawai_id, pegawai_pin, pegawai_nama, tgl_mulai_kerja, tgl_masuk_pertama FROM pegawai WHERE pegawai_status = 1 ORDER BY pegawai_nama') as $e) {
         $id = $e['pegawai_id'];
@@ -256,12 +258,14 @@ function calculate_thr($holiday, $payDate, $overrides = [])
         $p = $pays[$id];
         $start = $e['tgl_mulai_kerja'] ?: $e['tgl_masuk_pertama'];
         $months = service_months($start, $holiday);
+        // THR wage = basic pay + fixed allowances (incl. fixed components) in force at the holiday
         $upah = (int)($p['gaji_pokok'] + $p['tunjangan']);
+        foreach (isset($comps[$id]) ? $comps[$id] : [] as $cid => $amt) if (isset($defs[$cid]) && $defs[$cid]['kind'] === 'earning' && $defs[$cid]['fixed'] && $defs[$cid]['per'] === 'month') $upah += $amt;
         $rule = thr_amount($upah, $months);
         $amount = isset($overrides[$id]) ? max(0, (int)$overrides[$id]) : $rule;
         $base = q('SELECT bruto, period_to FROM web_payslip WHERE pegawai_id = ? AND period_to <= ? ORDER BY period_to DESC LIMIT 1', [$id, date('Y-m-t', strtotime($payDate))])->fetch();
         // no payslip saved yet: the month's gross from the pay data (wage + the BPJS the company pays that counts as income)
-        $b = bpjs($p, payroll_settings());
+        $b = bpjs(['tunjangan' => $upah - $p['gaji_pokok']] + $p, payroll_settings());
         $baseBruto = $base ? (int)$base['bruto'] : $upah + $b['jkk'] + $b['jkm'] + $b['kes_co'];
         $tax = $amount ? max(0, ter_tax($p['ptkp'], $baseBruto + $amount) - ter_tax($p['ptkp'], $baseBruto)) : 0;
         $note = !$start ? 'Tanggal mulai kerja kosong' : ($months < 1 ? 'Masa kerja < 1 bulan' : '');
@@ -307,7 +311,7 @@ function bpa1($pegawaiId, $year)
             elseif (strpos($k, 'Bonus') === 0) $l[7] += $v;
             else $l[3] += $v;                                                // allowances, daily pay, overtime
         }
-        foreach ($d['deductions'] as $k => $v) if (strpos($k, 'Potongan') === 0) $l[1] -= $v;   // absence / late deductions lower the salary
+        foreach ($d['deductions'] as $k => $v) if (strpos($k, 'Potongan tidak hadir') === 0 || strpos($k, 'Potongan terlambat') === 0) $l[1] -= $v;   // absence / late deductions lower the salary
         foreach (['BPJS JKK', 'BPJS JKM', 'BPJS Kesehatan (4%)'] as $k) $l[5] += isset($d['company'][$k]) ? $d['company'][$k] : 0;
         $l[10] += isset($d['iuran_pensiun']) ? $d['iuran_pensiun'] : 0;
         $l[20] += $s['pph21'];
