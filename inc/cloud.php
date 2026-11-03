@@ -90,8 +90,9 @@ function cloud_get_attlog($cloudId, $uploadDate)
 // ---------- Fingerspot Personnel desktop API (active path, free) ----------
 // The endpoint the Fingerspot Personnel desktop app itself uses (captured from its traffic), so it needs no API SDK
 // subscription and no paid Developer API — only the free Personnel API key. Every parameter is a path segment, GET:
-//   {base}/{apikey}/{cloud_id}/{date}/{req_ts}/{token}/3/0/     date = Y-m-d (one day), req_ts = YmdHis, 3 = comm type "web"
-//   token = 32-char lowercase MD5 signature; device_last_data uses MD5(cloud_id . apikey), see cloud_ds_token().
+//   {base}/{apikey}/{cloud_id}/{date}/{req_ts}/{token}/3/0/0   date = Y-m-d (the day the scans reached the cloud), req_ts = YmdHis,
+//   3 = comm type "web"; the server needs 8 segments and ignores the last two. token = MD5(cloud_id . date . req_ts . apikey)
+//   (confirmed with cloud.php?probe; device_last_data uses MD5(cloud_id . apikey)).
 // Reply {success, total, data:[{PIN, Name, "Date Time", "Log Type", "Verify Type", "Work Code", "IO Mode"}]}.
 
 /** Base of the Personnel desktop API attendance_log endpoint. */
@@ -104,13 +105,13 @@ function cloud_ds_base()
 /** The per-request signature for one device and day (recipe confirmed with cloud.php?probe). */
 function cloud_ds_token($cloudId, $date, $key, $now)
 {
-    return md5($cloudId . $key);
+    return md5($cloudId . $date . $now . $key);
 }
 
 /** The request URL for one machine and day; $now = YmdHis. */
 function cloud_ds_url($cloudId, $date, $key, $now)
 {
-    return cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/" . cloud_ds_token($cloudId, $date, $key, $now) . '/3/0/';
+    return cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/" . cloud_ds_token($cloudId, $date, $key, $now) . '/3/0/0';
 }
 
 /** Diagnostic: the reply of api-ds to each plausible layout x token recipe, [label => message]. A reply that is neither 404 ({"message":""}) nor Access Denied is a hit. */
