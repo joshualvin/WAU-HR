@@ -57,4 +57,15 @@ unlink($tmp);
 check('xlsx header', [$rows[0]['A'], $rows[0]['B'], $rows[0]['C']], ['Cloud ID', 'PIN', 'Time Scan']);
 check('xlsx data', [$rows[1]['A'], $rows[1]['B'], $rows[1]['C']], ['C2635CA0C3193536', '99901', '2024-08-05 10:37:00']);
 
+// ---- spacing and days ----
+check('days', cloud_days('2026-11-02', '2026-11-04'), ['2026-11-02', '2026-11-03', '2026-11-04']);
+check('days single', cloud_days('2026-11-04', '2026-11-04'), ['2026-11-04']);
+$CONFIG['fingerspot_min_interval'] = 2;
+@unlink(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'wauhr_cloud_last');
+cloud_throttle();
+$t0 = microtime(true);
+cloud_throttle();   // must wait the 2 s since the call above
+check('throttle waits', microtime(true) - $t0 >= 1.0, true);
+unset($CONFIG['fingerspot_min_interval']);
+@unlink(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'wauhr_cloud_last');
 echo "cloud_test: $ok checks passed\n";

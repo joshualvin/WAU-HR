@@ -198,19 +198,33 @@ function cloud_row_ds($r)
             'type_id' => $pick(['Type ID', 'Log Type'], 0), 'work_code' => $pick(['Work Code'], 0)];
 }
 
-/** Seconds to keep between two calls for one machine: Fingerspot limits the online data pull to once a minute. */
+/** Seconds to keep between two calls: Fingerspot limits the online data pull to one request a minute for the whole account. */
 function cloud_min_interval()
 {
     global $CONFIG;
     return isset($CONFIG['fingerspot_min_interval']) ? max(0, (int)$CONFIG['fingerspot_min_interval']) : 61;
 }
 
-/** Wait until the minimum interval passed since this machine's last call, then note the new call. */
-function cloud_throttle($cloudId)
+/**
+ * Wait until the minimum interval passed since the last call by anyone on this server (web page or scheduled run share the
+ * time kept in a temp file), then note the new call. shortcut: two processes starting at the same second can both pass, the
+ * scheduled script's lock keeps that to a web click during a scheduled run.
+ */
+function cloud_throttle()
 {
-    static $last = [];
-    if (isset($last[$cloudId])) { $wait = $last[$cloudId] + cloud_min_interval() - time(); if ($wait > 0) sleep($wait); }
-    $last[$cloudId] = time();
+    $file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'wauhr_cloud_last';
+    $last = is_file($file) ? (int)@file_get_contents($file) : 0;
+    $wait = $last + cloud_min_interval() - time();
+    if ($wait > 0) sleep($wait);
+    @file_put_contents($file, (string)time());
+}
+
+/** Every day from $from to $to (Y-m-d). */
+function cloud_days($from, $to)
+{
+    $out = [];
+    for ($d = $from; $d <= $to; $d = date('Y-m-d', strtotime($d . ' +1 day'))) $out[] = $d;
+    return $out;
 }
 
 /** GET a desktop-API URL. Returns [json array, error]. */
@@ -253,8 +267,8 @@ function cloud_get_attlog_ds($cloudId, $date, $tail = null)
 
 /**
  * Scans per [machine sn => result] that reached Fingerspot.io on $from..$to (never later than today). Per machine one
- * date_list call finds the days with data, then one attendance_log call per such day; calls to one machine are 60 s apart
- * (cloud_throttle) and the machines take turns. With $budget seconds (web page) it stops when the time is up and reports
+ * date_list call finds the days with data, then one attendance_log call per such day; calls are 61 s apart for the whole
+ * account (cloud_throttle) and the machines take turns. With $budget seconds (web page) it stops when the time is up and reports
  * the days left; run it again to continue. last_download_web only moves up to the last day covered, and only for a machine
  * that finished without errors, so a partial run never makes the next one skip data.
  */
@@ -274,9 +288,9 @@ function cloud_download($from, $to, $sns = [], $gps = false, $budget = 0)
         if ($sns && !in_array($d['sn'], $sns, true)) continue;
         $cid = strtoupper(trim($d['cloud_id']));
         $out[$d['sn']] = ['name' => $d['device_name'], 'received' => 0, 'added' => 0, 'unknown_pins' => [], 'errors' => [], 'complete' => true];
-        if ($from === $to) $dates = [$from];   // a single day needs no day list: one call per machine
+        if (count(cloud_days($from, $to)) <= 3) $dates = cloud_days($from, $to);   // a few days: asking the day list would cost as much as the days
         else {
-            cloud_throttle($cid);
+            cloud_throttle();
             list($dates, $err) = cloud_get_dates_ds($cid, $from, $to);
             if ($err) { $out[$d['sn']]['errors'][] = $err; $out[$d['sn']]['complete'] = false; continue; }
         }
@@ -291,7 +305,7 @@ function cloud_download($from, $to, $sns = [], $gps = false, $budget = 0)
             }
             list($cid, $days) = $queue[$sn];
             $day = array_shift($days);
-            cloud_throttle($cid);
+            cloud_throttle();
             list($rows, $err) = cloud_get_attlog_ds($cid, $day);
             if ($err) {
                 $out[$sn]['errors'][] = "$day: $err";
