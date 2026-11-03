@@ -9,6 +9,7 @@ require __DIR__ . '/inc/shifts.php';
 require_once __DIR__ . '/inc/employment.php';
 require __DIR__ . '/inc/discipline.php';
 require __DIR__ . '/inc/people.php';
+require __DIR__ . '/inc/company.php';
 $me = require_login();
 ensure_web_tables();
 ensure_payroll_tables();
@@ -16,6 +17,7 @@ ensure_shift_tables();
 ensure_employment_tables();
 ensure_discipline_tables();
 ensure_people_tables();
+ensure_company_tables();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -219,6 +221,8 @@ if ($m === 'home'):
         <?php foreach (array_slice($news, 0, 4) as $p): ?><div class="li"><span class="avatar"><?= h(initials($p['pegawai_nama'])) ?></span><div class="meta"><b><?= h($p['pegawai_nama']) ?></b><small>mulai <?= date('d-m-Y', strtotime($p['tgl_mulai_kerja'])) ?></small></div></div><?php endforeach; ?>
         <?php if (!$news): ?><div class="muted">Tidak ada.</div><?php endif; ?></div></div></div>
     </div>
+    <?php $anns = current_announcements($today, 3); if ($anns): ?><div class="card"><h2>Pengumuman <span class="side"><a href="company.php">Kelola ›</a></span></h2>
+      <?php foreach ($anns as $a): ?><div style="border-top:1px solid var(--line);padding:6px 0"><b><?= h($a['title']) ?></b><?= $a['event_date'] ? ' <span class="muted">· ' . h(fmt_date($a['event_date'])) . '</span>' : '' ?></div><?php endforeach; ?></div><?php endif; ?>
     <?php if ($profileReqs): ?><div class="card"><h2>Pengajuan perubahan data pribadi</h2><div class="list">
       <?php foreach ($profileReqs as $r): ?><div class="li"><span class="avatar"><?= h(initials($r['pegawai_nama'])) ?></span><div class="meta"><a href="hr.php?m=employee&id=<?= (int)$r['pegawai_id'] ?>&tab=personal"><b><?= h($r['pegawai_nama']) ?></b></a><small><?= h(date('d-m-Y H:i', strtotime($r['created_at']))) ?></small></div></div><?php endforeach; ?></div></div><?php endif; ?>
     <?php if ($alerts): ?><div class="card"><h2>Kontrak, masa percobaan & dokumen (30 hari) <span class="side"><a href="hr.php?m=employees&ks=kontrak">Karyawan kontrak ›</a></span></h2><div class="list">
@@ -362,6 +366,10 @@ elseif ($m === 'employee'):
                       'Mulai bekerja' => $p['tgl_mulai_kerja'] ? date('d-m-Y', strtotime($p['tgl_mulai_kerja'])) : '', 'Tanggal berhenti' => $p['tgl_resign'] ? date('d-m-Y', strtotime($p['tgl_resign'])) : '',
                       'Portal Pegawai' => $p['portal'] ? ($p['last_login'] ? 'login terakhir ' . date('d-m-Y H:i', strtotime($p['last_login'])) : 'kode dibuat, belum login') : 'belum punya kode login'] as $k => $v): ?>
         <dt><?= h($k) ?></dt><dd><?= $v ? h($v) : '<span class="muted">—</span>' ?></dd><?php endforeach; ?></dl></div>
+    <?php $held = q('SELECT * FROM web_asset WHERE pegawai_id = ? AND active = 1', [$id])->fetchAll(); $boss = q('SELECT p.pegawai_id, p.pegawai_nama FROM web_emp_profile x JOIN pegawai p ON p.pegawai_id = x.atasan_id WHERE x.pegawai_id = ?', [$id])->fetch(); ?>
+    <div class="section" style="max-width:none;margin-top:16px"><h2>Atasan & aset</h2>
+      <p style="margin:0">Atasan langsung: <?= $boss ? '<a href="hr.php?m=employee&id=' . (int)$boss['pegawai_id'] . '">' . h($boss['pegawai_nama']) . '</a>' : '<span class="muted">belum diatur</span>' ?> · <a href="company.php?p=org">atur</a></p>
+      <?php if ($held): ?><p style="margin:6px 0 0">Aset dipakai: <?= h(implode(', ', array_map(function ($a) { return $a['name'] . ($a['serial'] ? ' (' . $a['serial'] . ')' : ''); }, $held))) ?> · <a href="company.php?p=assets&f=out">kelola</a></p><?php else: ?><p class="muted" style="margin:6px 0 0">Tidak memegang aset.</p><?php endif; ?></div>
     <?php $hist = q('SELECT * FROM web_employment WHERE pegawai_id = ? ORDER BY start_date DESC, id DESC', [$id])->fetchAll(); $cur = $hist ? $hist[0] : null; ?>
     <div class="section" style="max-width:none;margin-top:16px"><h2>Status kepegawaian <?= employment_pill($cur) ?></h2>
       <?php if ($hist): ?><div class="tablescroll"><table>

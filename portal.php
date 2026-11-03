@@ -6,6 +6,7 @@ require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/discipline.php';
 require __DIR__ . '/inc/people.php';
+require __DIR__ . '/inc/company.php';
 require __DIR__ . '/inc/talent.php';
 require __DIR__ . '/inc/shifts.php';
 
@@ -304,6 +305,10 @@ if ($page === 'home'):
     <div class="p-stat"><b><?= $quota === null ? '—' : max(0, $quota - $taken) ?></b><span>Sisa cuti <?= date('Y') ?></span></div>
   </div>
   <p class="muted">Periode <?= h(fmt_date($pFrom)) ?> – <?= h(fmt_date($pTo)) ?></p>
+  <?php ensure_company_tables(); $anns = current_announcements(date('Y-m-d'), 5); $cal = array_slice(company_calendar(date('Y-m-d'), 30), 0, 8);
+  if ($anns): ?><div class="p-card"><h2>Pengumuman</h2><?php foreach ($anns as $a): ?><div style="border-top:1px solid var(--line);padding:8px 0"><b><?= $a['pinned'] ? '📌 ' : '' ?><?= h($a['title']) ?></b>
+    <?= $a['event_date'] ? ' <span class="muted">· ' . h(fmt_date($a['event_date'])) . '</span>' : '' ?><div style="white-space:pre-line"><?= h($a['body']) ?></div></div><?php endforeach; ?></div><?php endif; ?>
+  <?php if ($cal): ?><div class="p-card"><h2>Kalender 30 hari</h2><?php foreach ($cal as $c): ?><div class="muted" style="padding:2px 0"><b style="color:var(--text)"><?= h(date('d-m', strtotime($c[0]))) ?></b> · <?= h($c[2]) ?></div><?php endforeach; ?></div><?php endif; ?>
   <?php ensure_talent_tables();
   $myTasks = q('SELECT * FROM web_checklist WHERE pegawai_id = ? AND who = ? ORDER BY done_at IS NOT NULL, due_date, sort', [$me['id'], 'Karyawan'])->fetchAll();
   if ($myTasks && array_filter($myTasks, function ($t) { return !$t['done_at']; })): ?>
@@ -606,6 +611,8 @@ if ($page === 'home'):
       <label class="wide">Catatan untuk HR <input name="note" maxlength="255"></label>
       <div class="wide"><button class="p-btn primary">Kirim perubahan</button> <span class="muted">Perubahan disimpan setelah disetujui HR. Lampirkan bukti (mis. buku nikah, KK baru) di Dokumen saya.</span></div></form><?php endif; ?>
   </div>
+  <?php $myAssets = q('SELECT * FROM web_asset WHERE pegawai_id = ? AND active = 1', [$me['id']])->fetchAll(); if ($myAssets): ?>
+  <div class="p-card"><h2>Aset yang saya pakai</h2><?php foreach ($myAssets as $a): ?><div class="muted" style="padding:2px 0"><b style="color:var(--text)"><?= h($a['name']) ?></b> <?= h($a['serial']) ?> · sejak <?= h(date('d-m-Y', strtotime($a['assigned_at']))) ?></div><?php endforeach; ?></div><?php endif; ?>
   <div class="p-card"><h2>Dokumen saya</h2>
     <div class="p-list" style="margin-bottom:10px"><?php foreach ($docs as $d): ?><div class="p-item"><div class="p-main"><b><?= h(doc_kinds()[$d['kind']] ?? $d['kind']) ?></b> <?= h($d['title']) ?>
       <?= $d['expires'] ? '<div class="muted">berlaku s/d ' . h(date('d-m-Y', strtotime($d['expires']))) . '</div>' : '' ?></div><a class="p-btn small" target="_blank" href="doc.php?id=<?= (int)$d['id'] ?>">Lihat</a></div><?php endforeach; ?>

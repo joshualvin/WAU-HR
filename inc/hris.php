@@ -14,6 +14,7 @@ function hris_icon($name)
         'star'     => '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
         'money'    => '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9.5v5M18 9.5v5"/>',
         'brief'    => '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 13h18"/>',
+        'building' => '<path d="M4 21V5l8-3v19M12 8h8v13M8 8v.01M8 12v.01M8 16v.01M16 12v.01M16 16v.01M2 21h20"/>',
         'search'   => '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
         'chev'     => '<path d="M9 6l6 6-6 6"/>',
     ];
@@ -27,6 +28,7 @@ function hris_modules()
         'home'     => ['Beranda', 'home', ['home' => 'Beranda']],
         'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan', 'talent.php?p=onboarding' => 'On/offboarding', 'discipline.php' => 'Surat peringatan', 'letters.php' => 'Surat & template']],
         'time'     => ['Manajemen Waktu', 'clock', ['attendance' => 'Kehadiran', 'shifts' => 'Jadwal shift', 'swaps' => 'Tukar shift', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'balance' => 'Saldo cuti']],
+        'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset']],
         'recruit'  => ['Rekrutmen', 'brief', ['recruit.php?p=jobs' => 'Lowongan & kandidat', 'recruit.php?p=manpower' => 'Manpower planning', 'careers.php' => 'Halaman karir']],
         'performance' => ['Kinerja', 'star', ['talent.php?p=reviews' => 'Penilaian kinerja']],
         'report'   => ['Laporan', 'report', ['reports' => 'Semua laporan']],

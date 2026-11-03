@@ -94,6 +94,11 @@ Rates and TER brackets are in `inc/payroll.php`; `php tests/payroll_test.php` ch
 - **Dokumen** (profile tab and Portal → Profil → Dokumen saya): KTP, KK, NPWP, BPJS, ijazah, contract, certificates, SIM… as PDF or photo, with an optional expiry date; documents expiring within 30 days show on HR Beranda. Files are in `uploads/docs/` (blocked for direct access) and opened through `doc.php`, by admins or the employee.
 - **Surat & template** (`letters.php`): letters from templates with fields such as {nama} {jabatan} {mulai_kerja} {masa_kerja}: paklaring (surat keterangan kerja), surat keterangan karyawan aktif and SK pengangkatan to start with; templates can be edited and added. A letter can be edited before it is issued, gets a number (001/SKK/HR/XI/2026) and is kept and printable.
 
+## Company: announcements, calendar, org chart, assets
+- **Perusahaan → Pengumuman & kalender** (`company.php`): announcements (pinned, with an optional event date and an end date) on the Portal Pegawai home page and HR Beranda; a 60-day calendar of holidays, cuti bersama, events, birthdays and work anniversaries (30 days on the portal).
+- **Struktur organisasi**: each employee's direct supervisor (`web_emp_profile.atasan_id`), shown as a chart; loops are refused. The supervisor is also the first to approve requests.
+- **Aset**: laptops, phones, vehicles, uniforms, keys… with code, serial and condition, handed to and returned by employees with a history; shown on the profile (Pekerjaan) and in the portal, so offboarding can check what must come back.
+
 ## Employment status
 - **HR → Karyawan → profile → Pekerjaan**: the status kepegawaian with its history: Karyawan tetap (PKWTT, optional probation end), Kontrak (PKWT, contract number, start and end), Harian lepas or Magang. A renewal or change adds a row; the latest one is current. Checks follow PP 35/2021: a contract chain is at most 5 years including extensions, probation only for permanent staff and at most 3 months.
 - The employee list shows each status with its end date (amber within 30 days, red when it has passed) and can be filtered by status. Employees without a status can be filled in at once from their start date.
