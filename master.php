@@ -39,11 +39,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('Disimpan.');
             redirect("master.php?t=$t");
         }
+    } elseif ($action === 'move') {
+        // number the whole list in its current order, then swap the item with its neighbour
+        $ids = q("SELECT $pk FROM $t " . master_order_by($t, $pk))->fetchAll(PDO::FETCH_COLUMN);
+        $i = array_search($id, array_map('intval', $ids), true);
+        $j = $i === false ? false : $i + (post('dir') === 'up' ? -1 : 1);
+        if ($i !== false && $j >= 0 && $j < count($ids)) {
+            list($ids[$i], $ids[$j]) = [$ids[$j], $ids[$i]];
+            foreach ($ids as $n => $x) q('REPLACE INTO web_master_order (t, id, pos) VALUES (?, ?, ?)', [$t, (int)$x, $n + 1]);
+            audit('master_move', "$t $id " . post('dir'));
+        }
+        redirect("master.php?t=$t");
     } elseif ($action === 'delete') {
         $used = q("SELECT COUNT(*) FROM {$usedIn[0]} WHERE {$usedIn[1]} = ?", [$id])->fetchColumn();
         if ($used) $error = "Still used by $used record(s), so it can't be deleted.";
         else {
             q("DELETE FROM $t WHERE $pk = ?", [$id]);
+            q('DELETE FROM web_master_order WHERE t = ? AND id = ?', [$t, $id]);
             audit('master_delete', "$t $id");
             flash('Dihapus.');
             redirect("master.php?t=$t");
@@ -51,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$rows = q("SELECT * FROM $t ORDER BY $pk")->fetchAll();
+$rows = q("SELECT * FROM $t " . master_order_by($t, $pk))->fetchAll();
 $edit = null;
 if (get('edit') !== '') foreach ($rows as $r) if ((string)$r[$pk] === get('edit')) $edit = $r;
 
@@ -66,11 +78,15 @@ page_header($title, 'settings.php');
   <div class="card">
     <div class="table-wrap"><table>
       <tr><th>ID</th><?php foreach ($cols as $label): ?><th><?= h($label) ?></th><?php endforeach; ?><th></th></tr>
-      <?php foreach ($rows as $r): ?>
+      <?php foreach ($rows as $n => $r): ?>
         <tr>
           <td><?= h($r[$pk]) ?></td>
           <?php foreach ($cols as $c => $label): ?><td><?= h($r[$c]) ?></td><?php endforeach; ?>
           <td style="white-space:nowrap">
+            <?php foreach (['up' => ['▲', 'Naikkan'], 'down' => ['▼', 'Turunkan']] as $dir => $lbl): ?>
+              <form method="post" class="btn-form"><?= csrf_field() ?><input type="hidden" name="t" value="<?= $t ?>"><input type="hidden" name="action" value="move"><input type="hidden" name="id" value="<?= (int)$r[$pk] ?>"><input type="hidden" name="dir" value="<?= $dir ?>">
+                <button class="btn small" title="<?= $lbl[1] ?>" <?= ($dir === 'up' && $n === 0) || ($dir === 'down' && $n === count($rows) - 1) ? 'disabled' : '' ?>><?= $lbl[0] ?></button></form>
+            <?php endforeach; ?>
             <a class="btn small" href="master.php?t=<?= $t ?>&edit=<?= (int)$r[$pk] ?>">Ubah</a>
             <form method="post" class="btn-form" onsubmit="return confirm('Hapus data ini?')">
               <?= csrf_field() ?><input type="hidden" name="t" value="<?= $t ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$r[$pk] ?>">

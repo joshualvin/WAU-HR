@@ -269,12 +269,27 @@ function leave_categories()
     return q('SELECT kat_izin_id, kat_izin_nama FROM kategori_izin ORDER BY kat_izin_nama')->fetchAll(PDO::FETCH_KEY_PAIR);
 }
 
+/** Display order of the master lists (Jabatan, Departemen, Kantor ...), kept here so Personnel's ids stay as they are. */
+function ensure_master_order()
+{
+    db()->exec("CREATE TABLE IF NOT EXISTS web_master_order (
+        t VARCHAR(30) NOT NULL, id INT NOT NULL, pos INT NOT NULL, PRIMARY KEY (t, id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+}
+
+/** ORDER BY clause that follows the chosen order; items never placed come last, by id. */
+function master_order_by($t, $pk)
+{
+    ensure_master_order();
+    return "ORDER BY COALESCE((SELECT o.pos FROM web_master_order o WHERE o.t = '$t' AND o.id = $pk), 999999), $pk";
+}
+
 function lookup($table)
 {
     $map = [
-        'pembagian1' => 'SELECT pembagian1_id, pembagian1_nama FROM pembagian1 ORDER BY pembagian1_id',
-        'pembagian2' => 'SELECT pembagian2_id, pembagian2_nama FROM pembagian2 ORDER BY pembagian2_id',
-        'pembagian3' => 'SELECT pembagian3_id, pembagian3_nama FROM pembagian3 ORDER BY pembagian3_id',
+        'pembagian1' => 'SELECT pembagian1_id, pembagian1_nama FROM pembagian1 ' . master_order_by('pembagian1', 'pembagian1_id'),
+        'pembagian2' => 'SELECT pembagian2_id, pembagian2_nama FROM pembagian2 ' . master_order_by('pembagian2', 'pembagian2_id'),
+        'pembagian3' => 'SELECT pembagian3_id, pembagian3_nama FROM pembagian3 ' . master_order_by('pembagian3', 'pembagian3_id'),
         'jadwal'     => 'SELECT jdw_kerja_m_id, jdw_kerja_m_name FROM jdw_kerja_m ORDER BY jdw_kerja_m_id',
         'cuti'       => 'SELECT cuti_n_id, cuti_n_nama FROM cuti_normatif ORDER BY cuti_n_id',
         'device'     => 'SELECT sn, device_name FROM device ORDER BY device_name',
