@@ -4,6 +4,7 @@
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/payroll.php';
+require __DIR__ . '/inc/discipline.php';
 require __DIR__ . '/inc/talent.php';
 require __DIR__ . '/inc/shifts.php';
 
@@ -133,6 +134,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $page = 'reimburse';
+    } elseif ($action === 'warn_ack') {
+        ensure_discipline_tables();
+        q('UPDATE web_warning SET acknowledged_at = ? WHERE id = ? AND pegawai_id = ? AND acknowledged_at IS NULL', [date('Y-m-d H:i:s'), (int)post('id'), $me['id']]);
+        audit('warning_ack', $me['name'] . ' #' . (int)post('id'));
+        flash('Terima kasih, penerimaan peringatan dicatat.');
+        redirect('portal.php?p=warnings');
     } elseif ($action === 'loan_request') {
         ensure_payroll_tables();
         $amount = (int)preg_replace('/\D/', '', post('jumlah'));
@@ -229,6 +236,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 list($pFrom, $pTo) = current_period();
 $tabs = ['home' => 'Beranda', 'shift' => 'Jadwal', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'kasbon' => 'Kasbon', 'slip' => 'Slip Gaji', 'review' => 'Penilaian', 'profile' => 'Profil'];
+ensure_discipline_tables();
+// the Peringatan tab only for employees who have received one
+if (q('SELECT COUNT(*) FROM web_warning WHERE pegawai_id = ?', [$me['id']])->fetchColumn()) $tabs = array_slice($tabs, 0, -1, true) + ['warnings' => 'Peringatan'] + array_slice($tabs, -1, 1, true);
 if (!isset($tabs[$page])) $page = 'home';
 portal_header($tabs[$page], $tabs, $page, $emp);
 if ($error) echo '<div class="p-alert err">' . h($error) . '</div>';
@@ -474,6 +484,22 @@ if ($page === 'home'):
     </div>
   <?php endforeach; ?>
   <?php if (!$reviews): ?><div class="p-list"><div class="p-item muted">Belum ada penilaian kinerja.</div></div><?php endif; ?>
+
+<?php elseif ($page === 'warnings'):
+    $warns = q('SELECT * FROM web_warning WHERE pegawai_id = ? ORDER BY issued DESC, id DESC', [$me['id']])->fetchAll(); ?>
+  <div class="p-list">
+    <?php foreach ($warns as $w): $active = $w['valid_until'] >= date('Y-m-d'); ?>
+      <div class="p-item">
+        <div class="p-date"><b><?= date('d', strtotime($w['issued'])) ?></b><span><?= date('m-y', strtotime($w['issued'])) ?></span></div>
+        <div class="p-main"><div><b><?= h(warning_titles()[$w['level']]) ?></b> · <?= h($w['violation']) ?></div>
+          <div class="muted">No. <?= h($w['number']) ?> · berlaku s/d <?= h(date('d-m-Y', strtotime($w['valid_until']))) ?><?= $active ? '' : ' (sudah berakhir)' ?></div></div>
+        <div style="display:flex;gap:6px;align-items:center"><a class="p-btn small" target="_blank" href="discipline.php?print=<?= (int)$w['id'] ?>">Lihat surat</a>
+          <?php if (!$w['acknowledged_at']): ?><form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="warn_ack"><input type="hidden" name="id" value="<?= (int)$w['id'] ?>">
+            <button class="p-btn small primary">Saya sudah menerima</button></form><?php else: ?><span class="badge b-ok">Diterima <?= h(date('d-m-Y', strtotime($w['acknowledged_at']))) ?></span><?php endif; ?></div>
+      </div>
+    <?php endforeach; ?>
+    <?php if (!$warns): ?><div class="p-item muted">Tidak ada peringatan.</div><?php endif; ?>
+  </div>
 
 <?php elseif ($page === 'kasbon'):
     ensure_payroll_tables();

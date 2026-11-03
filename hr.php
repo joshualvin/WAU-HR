@@ -7,11 +7,13 @@ require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/shifts.php';
 require __DIR__ . '/inc/employment.php';
+require __DIR__ . '/inc/discipline.php';
 $me = require_login();
 ensure_web_tables();
 ensure_payroll_tables();
 ensure_shift_tables();
 ensure_employment_tables();
+ensure_discipline_tables();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -274,7 +276,7 @@ elseif ($m === 'employee'):
     <div style="flex:1"><b style="font-size:16px"><?= h($p['pegawai_nama']) ?></b><div class="muted">PIN <?= h($p['pegawai_pin']) ?> · <?= h(trim($p['jab'] . ' · ' . $p['dep'] . ' · ' . $p['kan'], ' ·')) ?></div></div>
     <span class="pill <?= ['1' => 'ok', '0' => 'grey', '2' => 'bad'][$p['pegawai_status']] ?? 'grey' ?>"><?= h($statusNames[$p['pegawai_status']] ?? '') ?></span>
   </div>
-  <nav class="tabs"><?php foreach (['personal' => 'Data pribadi', 'employment' => 'Pekerjaan', 'attendance' => 'Kehadiran', 'timeoff' => 'Cuti & Izin'] as $k => $label): ?>
+  <nav class="tabs"><?php foreach (['personal' => 'Data pribadi', 'employment' => 'Pekerjaan', 'attendance' => 'Kehadiran', 'timeoff' => 'Cuti & Izin', 'warnings' => 'Peringatan'] as $k => $label): ?>
     <a class="<?= $tab === $k ? 'on' : '' ?>" href="hr.php?m=employee&id=<?= $id ?>&tab=<?= $k ?>"><?= h($label) ?></a><?php endforeach; ?></nav>
   <?php if ($tab === 'personal'): ?>
     <div class="section" style="max-width:none"><dl class="dl">
@@ -311,6 +313,15 @@ elseif ($m === 'employee'):
           <label class="field"><span>Catatan</span><input type="text" name="note" maxlength="255"></label></div>
         <div class="formfoot"><button class="btn primary">Simpan status</button></div></form>
       <?php endif; ?></div>
+  <?php elseif ($tab === 'warnings'):
+      $warns = q('SELECT * FROM web_warning WHERE pegawai_id = ? ORDER BY issued DESC, id DESC', [$id])->fetchAll(); ?>
+    <?php if ($me['role'] === 'admin'): ?><div class="toolbar" style="margin-bottom:10px"><span class="grow"></span><a class="btn primary" href="discipline.php?p=new&pegawai_id=<?= $id ?>">+ Peringatan baru</a></div><?php endif; ?>
+    <div class="tablecard"><div class="tablescroll"><table>
+      <thead><tr><th>Jenis</th><th>Nomor</th><th>Tanggal</th><th>Berlaku sampai</th><th>Pelanggaran</th><th>Diterima</th><th class="actions">Surat</th></tr></thead><tbody>
+      <?php foreach ($warns as $w): ?><tr><td><?= warning_pill($w, $today) ?></td><td class="muted"><?= h($w['number']) ?></td><td><?= h(date('d-m-Y', strtotime($w['issued']))) ?></td>
+        <td><?= h(date('d-m-Y', strtotime($w['valid_until']))) ?></td><td><?= h($w['violation']) ?></td><td class="muted"><?= $w['acknowledged_at'] ? date('d-m-Y', strtotime($w['acknowledged_at'])) : 'belum' ?></td>
+        <td class="actions"><?php if ($me['role'] === 'admin'): ?><a class="btn small" target="_blank" href="discipline.php?print=<?= (int)$w['id'] ?>">Cetak</a><?php endif; ?></td></tr><?php endforeach; ?>
+      </tbody></table></div><?php if (!$warns): ?><div class="empty"><strong>Tidak ada peringatan</strong></div><?php endif; ?></div>
   <?php elseif ($tab === 'attendance'):
       list($pf, $pt) = current_period();
       $from = get('from', $pf); $to = get('to', min($pt, $today));
