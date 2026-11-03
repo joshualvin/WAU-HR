@@ -200,7 +200,8 @@ function pph21($pay, $bruto, $iuranEmp, $periodTo, $pegawaiId, $thr = null)
     $neto = $annualBruto - $biayaJabatan - $prevIuran - $iuranEmp;
     $pkp = $neto - ptkp_amount($pay['ptkp']);
     $annual = pasal17($pkp);
-    return [(int)max(0, $annual - $prev['t']), 'Desember: PPh setahun ' . rupiah($annual) . ' − dipotong sebelumnya ' . rupiah($prev['t']) . ($thr['year'][0] ? ' (termasuk THR)' : '')];
+    // negative = more was withheld during the year than is due: refunded on the December payslip
+    return [(int)($annual - $prev['t']), 'Desember: PPh setahun ' . rupiah($annual) . ' − dipotong sebelumnya ' . rupiah($prev['t']) . ($thr['year'][0] ? ' (termasuk THR)' : '')];
 }
 
 /**
@@ -322,10 +323,13 @@ function calculate_payroll($from, $to)
         $bruto = $earnTotal + $b['jkk'] + $b['jkm'] + $b['kes_co'];
         $iuranEmp = $b['jht_emp'] + $b['jp_emp'];
         list($tax, $taxNote) = $daily ? pph21_daily($bruto, $c['present']) : pph21($p, $bruto, $iuranEmp, $to, $id);
+        // December: over-withheld tax is paid back with the salary (not income, so after the PPh 21 gross)
+        $refund = 0;
+        if ($tax < 0) { $refund = -$tax; $tax = 0; $taxNote .= ' → kelebihan dikembalikan ' . rupiah($refund); $earn['Pengembalian kelebihan PPh 21'] = $refund; }
         $empDeduct = ['BPJS Kesehatan (1%)' => $b['kes_emp'], 'BPJS JHT (2%)' => $b['jht_emp'], 'BPJS JP (1%)' => $b['jp_emp'], 'PPh 21' => $tax] + $compDeduct;
         $compTotal = (int)array_sum($compDeduct);
         // kasbon installments: repayment, so after tax; never more than the pay left, the rest moves to the next period
-        $left = $earnTotal + (int)array_sum(array_column(isset($claims[$id]) ? $claims[$id] : [], 'jumlah')) - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax - $compTotal;
+        $left = $earnTotal + $refund + (int)array_sum(array_column(isset($claims[$id]) ? $claims[$id] : [], 'jumlah')) - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax - $compTotal;
         $myLoans = [];
         foreach (isset($loans[$id]) ? $loans[$id] : [] as $l) {
             $amt = (int)max(0, min($l[1], $left));
@@ -341,7 +345,8 @@ function calculate_payroll($from, $to)
             'earnings' => array_filter($earn), 'deductions' => array_filter($deduct + $empDeduct),
             'company' => ['BPJS Kesehatan (4%)' => $b['kes_co'], 'BPJS JHT (3,7%)' => $b['jht_co'], 'BPJS JP (2%)' => $b['jp_co'], 'BPJS JKK' => $b['jkk'], 'BPJS JKM' => $b['jkm']],
             'bruto' => $bruto, 'iuran_pensiun' => $iuranEmp, 'pph21' => $tax, 'pph21_note' => $taxNote,
-            'netto' => $earnTotal + $reimb - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax - $compTotal - $loanTotal, 'prorate' => $factor < 1 ? [$mine, $all] : null, 'pay_type' => $daily ? 'daily' : 'monthly',
+            'pph21_refund' => $refund,
+            'netto' => $earnTotal + $reimb + $refund - $b['kes_emp'] - $b['jht_emp'] - $b['jp_emp'] - $tax - $compTotal - $loanTotal, 'prorate' => $factor < 1 ? [$mine, $all] : null, 'pay_type' => $daily ? 'daily' : 'monthly',
             'reimburse_ids' => array_map('intval', array_column($myClaims, 'id')),
             'loans' => $myLoans, 'kasbon' => $loanTotal,
         ];

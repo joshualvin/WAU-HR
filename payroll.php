@@ -241,6 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $v = str_replace(',', '.', post($k, (string)$def));
             if (is_numeric($v) && $v >= 0) q('REPLACE INTO web_pay_setting (k, v) VALUES (?, ?)', [$k, $v]);
         }
+        foreach (journal_accounts() as $k => $a) if (post($k) !== '') q('REPLACE INTO web_pay_setting (k, v) VALUES (?, ?)', [$k, mb_substr(trim(post($k)), 0, 30)]);
         audit('payroll_settings', 'tarif diubah');
         flash('Pengaturan gaji disimpan.');
         redirect('payroll.php?p=settings');
@@ -252,10 +253,32 @@ if (get('csv') !== '') {
     $rows = q('SELECT s.*, p.pegawai_pin, p.pegawai_nama, p.nama_bank, p.nama_rek, p.no_rek FROM web_payslip s JOIN pegawai p ON p.pegawai_id = s.pegawai_id
                WHERE s.period_to = ? ORDER BY p.pegawai_pin + 0', [$to])->fetchAll();
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . (get('csv') === 'bupot' ? 'pph21_' : 'gaji_') . $to . '.csv"');
+    $names = ['bupot' => 'pph21_', 'bank' => 'transfer_', 'bpjs' => 'bpjs_', 'journal' => 'jurnal_gaji_'];
+    header('Content-Disposition: attachment; filename="' . (isset($names[get('csv')]) ? $names[get('csv')] : 'gaji_') . $to . '.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    if (get('csv') === 'bupot') {   // data for the PPh 21 monthly withholding (e-Bupot 21)
+    if (get('csv') === 'bank') {   // transfer list for the bank's bulk / payroll upload: one row per employee with an account
+        fputcsv($out, ['No', 'No. rekening', 'Nama rekening', 'Bank', 'Jumlah', 'Keterangan', 'PIN', 'Nama karyawan']);
+        $i = 0;
+        foreach ($rows as $r) if ($r['netto'] > 0) fputcsv($out, [++$i, preg_replace('/\D/', '', (string)$r['no_rek']), $r['nama_rek'] ?: $r['pegawai_nama'], $r['nama_bank'], (int)$r['netto'], 'Gaji ' . date('m/Y', strtotime($to)), $r['pegawai_pin'], $r['pegawai_nama'] . ($r['no_rek'] ? '' : ' (NO. REKENING KOSONG)')]);
+    } elseif (get('csv') === 'bpjs') {   // contributions per employee and programme, for the BPJS reports / payment
+        fputcsv($out, ['PIN', 'Nama', 'NIK / NPWP', 'Upah dilaporkan', 'Kes perusahaan', 'Kes karyawan', 'JHT perusahaan', 'JHT karyawan', 'JP perusahaan', 'JP karyawan', 'JKK', 'JKM', 'Total']);
+        $sum = array_fill(0, 9, 0);
+        foreach ($rows as $r) {
+            $l = json_decode($r['detail'], true); $b = bpjs_lines($l);
+            $wage = 0; foreach ($l['earnings'] as $k => $v) if (strpos($k, 'Gaji pokok') === 0 || strpos($k, 'Tunjangan tetap') === 0 || strpos($k, 'Upah harian') === 0) $wage += $v;
+            $vals = [$b['kes'][0], $b['kes'][1], $b['jht'][0], $b['jht'][1], $b['jp'][0], $b['jp'][1], $b['jkk'][0], $b['jkm'][0]];
+            if (!array_sum($vals)) continue;
+            fputcsv($out, array_merge([$r['pegawai_pin'], $r['pegawai_nama'], $l['npwp'], $wage], $vals, [array_sum($vals)]));
+            foreach ($vals as $i => $v) $sum[$i] += $v; $sum[8] += array_sum($vals);
+        }
+        fputcsv($out, array_merge(['', 'TOTAL', '', ''], $sum));
+    } elseif (get('csv') === 'journal') {   // accounting journal of the period
+        $acc = journal_accounts();
+        fputcsv($out, ['Tanggal', 'Kode akun', 'Nama akun', 'Keterangan', 'Debit', 'Kredit']);
+        foreach (payroll_journal(array_map(function ($r) { return json_decode($r['detail'], true); }, $rows)) as $j)
+            fputcsv($out, [$to, $acc[$j[0]][1], $acc[$j[0]][0], 'Gaji periode ' . date('d-m-Y', strtotime($rows ? $rows[0]['period_from'] : $to)) . ' s/d ' . date('d-m-Y', strtotime($to)), $j[1], $j[2]]);
+    } elseif (get('csv') === 'bupot') {   // data for the PPh 21 monthly withholding (e-Bupot 21)
         fputcsv($out, ['Masa', 'Tahun', 'PIN', 'Nama', 'NPWP/NIK', 'PTKP', 'Kategori TER', 'Penghasilan bruto', 'PPh 21 dipotong', 'Keterangan']);
         foreach ($rows as $r) {
             $l = json_decode($r['detail'], true);
@@ -340,6 +363,9 @@ elseif ($p === 'slips'):
       <td><span class="pill <?= $r['pub'] ? 'ok' : 'grey' ?>"><?= $r['pub'] ? 'Diterbitkan' : 'Draf' ?></span></td>
       <td class="actions" style="white-space:nowrap"><a class="btn small" href="payroll.php?<?= h(http_build_query(['csv' => 'gaji', 'to' => $r['period_to']])) ?>">Laporan gaji</a>
         <a class="btn small" href="payroll.php?<?= h(http_build_query(['csv' => 'bupot', 'to' => $r['period_to']])) ?>">Data e-Bupot 21</a>
+        <a class="btn small" href="payroll.php?<?= h(http_build_query(['csv' => 'bank', 'to' => $r['period_to']])) ?>">Transfer bank</a>
+        <a class="btn small" href="payroll.php?<?= h(http_build_query(['csv' => 'bpjs', 'to' => $r['period_to']])) ?>">Iuran BPJS</a>
+        <a class="btn small" href="payroll.php?<?= h(http_build_query(['csv' => 'journal', 'to' => $r['period_to']])) ?>">Jurnal</a>
         <?php if ($r['pub']): ?><form method="post" class="inline" onsubmit="return confirm('Tarik slip periode ini dari Portal Pegawai?')"><?= $csrf ?><input type="hidden" name="action" value="unpublish"><input type="hidden" name="to" value="<?= h($r['period_to']) ?>"><button class="btn small">Tarik</button></form><?php endif; ?></td></tr><?php endforeach; ?>
     </tbody></table></div><?php if (!$periods): ?><div class="empty"><strong>Belum ada gaji yang disimpan</strong>Hitung dan simpan di <a href="payroll.php?p=run">Proses gaji</a>.</div><?php endif; ?></div>
   <?php if ($slips): ?>
@@ -712,6 +738,8 @@ else:
     <?php foreach ($fields as $title => $fs): ?><h2><?= h($title) ?></h2><div class="row2">
       <?php foreach ($fs as $k => $label): ?><label class="field"><span><?= h($label) ?></span><input type="text" name="<?= $k ?>" value="<?= h(rtrim(rtrim(number_format($s[$k], 2, '.', ''), '0'), '.')) ?>"></label><?php endforeach; ?></div>
     <?php endforeach; ?>
+    <h2>Akun jurnal (ekspor Jurnal per periode)</h2><div class="row2">
+      <?php foreach (journal_accounts() as $k => $a): ?><label class="field"><span><?= h($a[0]) ?></span><input type="text" name="<?= $k ?>" value="<?= h($a[1]) ?>"></label><?php endforeach; ?></div>
     <p class="muted">PPh 21 memakai tarif efektif rata-rata (TER, PP 58/2023) per bulan dan tarif Pasal 17 di periode Desember. Batas upah JP berubah tiap Maret; periksa angkanya.</p>
     <div class="formfoot"><button class="btn primary">Simpan</button></div>
   </form>

@@ -85,4 +85,12 @@ check('daily above 2.5jt: Pasal 17 on 50%', pph21_daily(6000000, 2)[0], 150000);
 check('thr daily avg', thr_daily_wage([3000000, 4000000, 5000000], 9), 4000000);
 check('thr daily last 12', thr_daily_wage(array_merge([100, 100], array_fill(0, 12, 3000000)), 9), 3000000);
 check('thr daily fallback', thr_daily_wage([], 3750000), 3750000);
+// Journal of a period always balances: earnings, absence deduction, reimbursement, refund, BPJS, PPh, kasbon, other
+$slip = ['earnings' => ['Gaji pokok' => 7000000, 'Lembur' => 500000, 'Reimbursement (1 klaim)' => 200000, 'Pengembalian kelebihan PPh 21' => 50000],
+         'deductions' => ['Potongan tidak hadir (1 hari)' => 300000, 'BPJS JHT (2%)' => 140000, 'PPh 21' => 0, 'Koperasi' => 100000, 'Cicilan kasbon #1 (sisa Rp0)' => 250000],
+         'company' => ['BPJS JHT (3,7%)' => 259000, 'BPJS JKK' => 16800], 'netto' => 7750000 - 790000];
+$j = payroll_journal([$slip, $slip]);
+check('journal balances', array_sum(array_column($j, 1)), array_sum(array_column($j, 2)));
+check('salary expense less absence', $j[0], ['acc_salary', 2 * (7500000 - 300000), 0]);
+check('bpjs lines', bpjs_lines($slip)['jht'], [259000, 140000]);
 echo "payroll_test: $ok checks passed\n";

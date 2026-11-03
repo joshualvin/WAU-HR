@@ -323,7 +323,7 @@ function bpa1($pegawaiId, $year)
         $ptkp = $d['ptkp'];
         $npwp = $d['npwp'];
         foreach ($d['earnings'] as $k => $v) {
-            if (strpos($k, 'Reimbursement') === 0) continue;                 // not income
+            if (strpos($k, 'Reimbursement') === 0 || strpos($k, 'Pengembalian') === 0) continue;   // not income
             if (strpos($k, 'Gaji pokok') === 0) $l[1] += $v;
             elseif (strpos($k, 'Bonus') === 0) $l[7] += $v;
             else $l[3] += $v;                                                // allowances, daily pay, overtime
@@ -331,7 +331,7 @@ function bpa1($pegawaiId, $year)
         foreach ($d['deductions'] as $k => $v) if (strpos($k, 'Potongan tidak hadir') === 0 || strpos($k, 'Potongan terlambat') === 0) $l[1] -= $v;   // absence / late deductions lower the salary
         foreach (['BPJS JKK', 'BPJS JKM', 'BPJS Kesehatan (4%)'] as $k) $l[5] += isset($d['company'][$k]) ? $d['company'][$k] : 0;
         $l[10] += isset($d['iuran_pensiun']) ? $d['iuran_pensiun'] : 0;
-        $l[20] += $s['pph21'];
+        $l[20] += $s['pph21'] - (isset($d['pph21_refund']) ? $d['pph21_refund'] : 0);   // a December refund lowers what was withheld
     }
     foreach ($thrs as $t) {
         $months[] = (int)substr($t['pay_date'], 5, 2);
@@ -352,4 +352,57 @@ function bpa1($pegawaiId, $year)
     return ['lines' => $l, 'from' => min($months), 'to' => max($months), 'ptkp' => $ptkp, 'npwp' => $npwp, 'final' => $final,
             // with December saved, the tax due and the tax withheld should match; a difference is shown on the form
             'diff' => $l[19] - $l[20]];
+}
+
+// ---------- exports: bank transfer, BPJS, accounting journal ----------
+
+/** Journal account codes (Pengaturan gaji, stored as text in web_pay_setting acc_*). */
+function journal_accounts()
+{
+    $def = ['acc_salary' => ['Beban gaji & tunjangan', '6101'], 'acc_bpjs_exp' => ['Beban BPJS perusahaan', '6102'], 'acc_reimb' => ['Beban reimbursement', '6103'],
+            'acc_pph' => ['Utang PPh 21', '2103'], 'acc_bpjs' => ['Utang BPJS', '2104'], 'acc_loan' => ['Piutang karyawan (kasbon)', '1105'],
+            'acc_other' => ['Utang potongan lain', '2109'], 'acc_payable' => ['Utang gaji / bank', '2101']];
+    $saved = q("SELECT k, v FROM web_pay_setting WHERE k LIKE 'acc\\_%'")->fetchAll(PDO::FETCH_KEY_PAIR);
+    foreach ($def as $k => $v) if (isset($saved[$k]) && $saved[$k] !== '') $def[$k][1] = $saved[$k];
+    return $def;
+}
+
+/**
+ * Journal of one saved payroll period from its payslips: [[account key, debit, credit], ...], balanced.
+ * Debit salary expense (earnings less absence deductions, without reimbursements and tax refunds), company BPJS,
+ * reimbursements and refunded PPh 21; credit PPh 21, BPJS (employee + company), kasbon repaid, other deductions, net pay.
+ */
+function payroll_journal($slips)
+{
+    $t = array_fill_keys(['salary', 'reimb', 'refund', 'co', 'pph', 'bpjs_emp', 'loan', 'other', 'net', 'absence'], 0);
+    foreach ($slips as $d) {
+        foreach ($d['earnings'] as $k => $v) {
+            if (strpos($k, 'Reimbursement') === 0) $t['reimb'] += $v;
+            elseif (strpos($k, 'Pengembalian') === 0) $t['refund'] += $v;
+            else $t['salary'] += $v;
+        }
+        foreach ($d['deductions'] as $k => $v) {
+            if (strpos($k, 'Potongan tidak hadir') === 0 || strpos($k, 'Potongan terlambat') === 0) $t['absence'] += $v;
+            elseif ($k === 'PPh 21') $t['pph'] += $v;
+            elseif (strpos($k, 'BPJS') === 0) $t['bpjs_emp'] += $v;
+            elseif (strpos($k, 'Cicilan kasbon') === 0) $t['loan'] += $v;
+            else $t['other'] += $v;
+        }
+        $t['co'] += array_sum($d['company']);
+        $t['net'] += $d['netto'];
+    }
+    return array_values(array_filter([
+        ['acc_salary', $t['salary'] - $t['absence'], 0], ['acc_bpjs_exp', $t['co'], 0], ['acc_reimb', $t['reimb'], 0], ['acc_pph', $t['refund'], 0],
+        ['acc_pph', 0, $t['pph']], ['acc_bpjs', 0, $t['bpjs_emp'] + $t['co']], ['acc_loan', 0, $t['loan']], ['acc_other', 0, $t['other']], ['acc_payable', 0, $t['net']],
+    ], function ($l) { return $l[1] || $l[2]; }));
+}
+
+/** BPJS per employee from a payslip: [program => [company, employee]] and the wage reported. */
+function bpjs_lines($d)
+{
+    $c = $d['company'];
+    $e = $d['deductions'];
+    $g = function ($a, $k) { return isset($a[$k]) ? (int)$a[$k] : 0; };
+    return ['kes' => [$g($c, 'BPJS Kesehatan (4%)'), $g($e, 'BPJS Kesehatan (1%)')], 'jht' => [$g($c, 'BPJS JHT (3,7%)'), $g($e, 'BPJS JHT (2%)')],
+            'jp' => [$g($c, 'BPJS JP (2%)'), $g($e, 'BPJS JP (1%)')], 'jkk' => [$g($c, 'BPJS JKK'), 0], 'jkm' => [$g($c, 'BPJS JKM'), 0]];
 }
