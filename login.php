@@ -16,8 +16,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         session_regenerate_id(true);
         $_SESSION['user'] = ['id' => (int)$row['id'], 'username' => $row['username'], 'full_name' => $row['full_name'], 'role' => $row['role']];
         q('UPDATE web_user SET last_login = ? WHERE id = ?', [date('Y-m-d H:i:s'), $row['id']]);
+        audit('login', 'Masuk');
         redirect($next);
     }
+    q('INSERT INTO web_log (created_at, username, action, detail) VALUES (?, ?, ?, ?)', [date('Y-m-d H:i:s'), mb_substr(post('username'), 0, 50), 'login_failed', 'Username atau password salah']);
     $error = 'Username atau password salah.';
 }
 

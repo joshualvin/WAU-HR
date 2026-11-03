@@ -34,7 +34,7 @@ function hris_modules()
         'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=bupot' => 'Bukti potong', 'payroll.php?p=components' => 'Komponen gaji', 'payroll.php?p=settle' => 'Pesangon & penyelesaian',
                                                'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=settings' => 'Pengaturan gaji']],
         'performance' => ['Kinerja', 'star', ['talent.php?p=reviews' => 'Penilaian kinerja']],
-        'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset']],
+        'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset', 'activity.php' => 'Log aktivitas']],
         'report'   => ['Laporan', 'report', ['reports' => 'Semua laporan']],
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];
