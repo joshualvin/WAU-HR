@@ -23,12 +23,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $error = 'Username atau password salah.';
 }
 
-page_header('Masuk');
-?>
-<div class="card narrow">
+$company = isset($CONFIG['company']) ? $CONFIG['company'] : 'Perusahaan';
+?><!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masuk · HR</title>
+<link rel="stylesheet" href="assets/hris.css">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<style>
+.lg { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+.lg .card { width: 100%; max-width: 380px; padding: 28px; }
+.lg .brand { justify-content: center; margin-bottom: 18px; }
+.lg .brandtext { display: block !important; }
+.lg h1 { font-size: 18px; margin: 0 0 14px; text-align: center; }
+.lg form { display: grid; gap: 12px; }
+.lg label { display: grid; gap: 4px; font-weight: 500; font-size: 13px; }
+.lg input { width: 100%; border: 1px solid var(--line-strong); background: var(--bg); border-radius: 6px; padding: 9px 10px; }
+.lg .btn { justify-content: center; width: 100%; padding: 9px; }
+</style>
+</head>
+<body class="lg">
+<div class="card">
+  <div class="brand"><img class="mark" src="assets/logo.png" alt="" width="32" height="32"><span class="brandtext"><b><?= h($company) ?></b><small>HR</small></span></div>
   <h1>Masuk</h1>
   <?php if ($error): ?><div class="flash err"><?= h($error) ?></div><?php endif; ?>
-  <form method="post" class="stack">
+  <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="next" value="<?= h($next) ?>">
     <label>Username <input name="username" required autofocus value="<?= h(post('username', 'admin')) ?>" autocomplete="username"></label>
@@ -36,4 +57,5 @@ page_header('Masuk');
     <button class="btn primary">Masuk</button>
   </form>
 </div>
-<?php page_footer();
+</body>
+</html>
