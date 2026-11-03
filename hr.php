@@ -11,6 +11,7 @@ require __DIR__ . '/inc/discipline.php';
 require __DIR__ . '/inc/people.php';
 require __DIR__ . '/inc/company.php';
 require __DIR__ . '/inc/approval.php';
+require __DIR__ . '/inc/homestats.php';
 $me = require_login();
 ensure_web_tables();
 ensure_payroll_tables();
@@ -173,10 +174,11 @@ if ($m === 'home'):
     $late = 0;
     foreach ($rows as $r) { $c[$r['status']]++; if ($r['late']) $late++; }
     $pending = q($pendingSql, [REQ_PENDING])->fetchAll();
+    list($offFrom, $offTo, $offLabel) = home_off_range(get('off'), $today);
     $off = q("SELECT i.izin_tgl, p.pegawai_id, p.pegawai_pin, p.pegawai_nama, j.izin_jenis_name FROM izin i JOIN pegawai p ON p.pegawai_id = i.pegawai_id
               LEFT JOIN jns_izin j ON j.izin_jenis_id = i.izin_jenis_id
               WHERE i.izin_status = 1 AND i.izin_jenis_id NOT BETWEEN 100 AND 105 AND i.izin_tgl BETWEEN ? AND ? ORDER BY i.izin_tgl, p.pegawai_nama",
-             [$today, date('Y-m-d', strtotime('+6 days'))])->fetchAll();
+             [$offFrom, $offTo])->fetchAll();
     $all = people();
     $bdays = array_filter($all, function ($p) { return $p['tgl_lahir'] && date('m', strtotime($p['tgl_lahir'])) === date('m'); });
     $news = array_filter($all, function ($p) { return $p['tgl_mulai_kerja'] && $p['tgl_mulai_kerja'] >= date('Y-m-d', strtotime('-90 days')); });
@@ -186,6 +188,22 @@ if ($m === 'home'):
     foreach (documents_expiring(30) as $d) $alerts[] = ['emp' => ['pegawai_id' => $d['pegawai_id'], 'pegawai_nama' => $d['pegawai_nama']], 'what' => (doc_kinds()[$d['kind']] ?? $d['kind']) . ' berakhir', 'date' => $d['expires'], 'tab' => 'docs'];
     usort($alerts, function ($a, $b) { return strcmp($a['date'], $b['date']); });
     $profileReqs = q("SELECT r.id, r.pegawai_id, r.created_at, p.pegawai_nama FROM web_profile_request r JOIN pegawai p ON p.pegawai_id = r.pegawai_id WHERE r.status = 'pending' ORDER BY r.created_at")->fetchAll();
+    // the four overview widgets, optionally for one department
+    $depF = (int)get('dep');
+    $scope = $depF ? array_values(array_filter($all, function ($p) use ($depF) { return (int)$p['pembagian2_id'] === $depF; })) : $all;
+    $hStatus = home_status($scope, current_employment(), employment_statuses());
+    $hService = home_service($scope, $today);
+    $hJab = home_jabatan($scope, array_values(lookup('pembagian1')));
+    $hGender = home_gender($scope);
+    $segList = function ($counts) {
+        $t = array_sum($counts); $pal = home_palette(); $i = 0; $bar = ''; $rows = '';
+        foreach ($counts as $label => $n) {
+            $col = $label === 'Belum diisi' ? '#8b97a7' : $pal[$i++ % count($pal)];   // not filled in is grey, never a status colour
+            if ($n > 0) $bar .= '<i style="width:' . (100 * $n / $t) . '%;background:' . $col . '"></i>';
+            $rows .= '<div><i class="dot" style="background:' . $col . '"></i><span>' . h($label) . '</span><span class="n">' . $n . '</span><span class="p">' . home_pct($n, $t) . '%</span></div>';
+        }
+        return '<div class="stack">' . $bar . '</div><div class="kv"><div class="tot"><span>Total</span><span>' . $t . '</span></div>' . $rows . '</div>';
+    };
     hris_header('Beranda', 'home', 'home'); ?>
   <div class="homegrid">
     <div class="card hello">
@@ -199,6 +217,22 @@ if ($m === 'home'):
         <a class="chip" href="hr.php?m=timeoff">Persetujuan cuti</a>
         <a class="chip" href="report.php">Laporan</a>
       </div>
+    </div>
+    <div class="card" style="padding:14px 22px">
+      <form method="get" class="overview-bar"><input type="hidden" name="m" value="home"><input type="hidden" name="off" value="<?= h(get('off')) ?>">
+        <b>Ringkasan karyawan</b>
+        <label class="muted">Departemen <select name="dep" onchange="this.form.submit()"><option value="">Semua</option><?php foreach (lookup('pembagian2') as $id => $name): ?><option value="<?= (int)$id ?>"<?= (int)$id === $depF ? ' selected' : '' ?>><?= h($name) ?></option><?php endforeach; ?></select></label></form>
+    </div>
+    <div class="grid4">
+      <div class="card widget"><div class="wbody"><h2>Status kepegawaian</h2><?= $segList($hStatus) ?></div><div class="wfoot"><a href="hr.php?m=employees&status=1">Lihat karyawan ›</a></div></div>
+      <div class="card widget"><div class="wbody"><h2>Masa kerja</h2>
+        <?php $hMax = max(1, max($hService)); ?><div class="hist"><?php foreach ($hService as $label => $n): ?><div class="hbar"><span class="hv"><?= $n ?></span><i style="height:<?= max(2, 100 * $n / $hMax) ?>%"></i><small><?= h($label) ?></small></div><?php endforeach; ?></div></div>
+        <div class="wfoot muted">Dari tanggal mulai bekerja</div></div>
+      <div class="card widget"><div class="wbody"><h2>Level jabatan</h2><?= $segList($hJab) ?></div><div class="wfoot"><a href="master.php?t=pembagian1">Atur urutan jabatan ›</a></div></div>
+      <div class="card widget"><div class="wbody"><h2>Keragaman gender</h2>
+        <div class="donut" style="background:<?= h(home_conic($hGender)) ?>"><span><?= array_sum($hGender) ?></span></div>
+        <div class="kv"><?php $gi = 0; foreach ($hGender as $label => $n): $col = home_palette()[$gi++]; ?><div><i class="dot" style="background:<?= $col ?>"></i><span><?= h($label) ?></span><span class="n"><?= $n ?></span><span class="p"><?= home_pct($n, array_sum($hGender)) ?>%</span></div><?php endforeach; ?></div></div>
+        <div class="wfoot muted">Karyawan aktif<?= $depF ? ' di departemen ini' : '' ?></div></div>
     </div>
     <div class="grid4">
       <div class="card widget"><div class="wbody"><h2>Kehadiran hari ini</h2>
@@ -224,19 +258,36 @@ if ($m === 'home'):
         <?php foreach (array_slice($news, 0, 4) as $p): ?><div class="li"><span class="avatar"><?= h(initials($p['pegawai_nama'])) ?></span><div class="meta"><b><?= h($p['pegawai_nama']) ?></b><small>mulai <?= date('d-m-Y', strtotime($p['tgl_mulai_kerja'])) ?></small></div></div><?php endforeach; ?>
         <?php if (!$news): ?><div class="muted">Tidak ada.</div><?php endif; ?></div></div></div>
     </div>
-    <?php $anns = current_announcements($today, 3); if ($anns): ?><div class="card"><h2>Pengumuman <span class="side"><a href="company.php">Kelola ›</a></span></h2>
-      <?php foreach ($anns as $a): ?><div style="border-top:1px solid var(--line);padding:6px 0"><b><?= h($a['title']) ?></b><?= $a['event_date'] ? ' <span class="muted">· ' . h(fmt_date($a['event_date'])) . '</span>' : '' ?></div><?php endforeach; ?></div><?php endif; ?>
-    <?php if ($profileReqs): ?><div class="card"><h2>Pengajuan perubahan data pribadi</h2><div class="list">
-      <?php foreach ($profileReqs as $r): ?><div class="li"><span class="avatar"><?= h(initials($r['pegawai_nama'])) ?></span><div class="meta"><a href="hr.php?m=employee&id=<?= (int)$r['pegawai_id'] ?>&tab=personal"><b><?= h($r['pegawai_nama']) ?></b></a><small><?= h(date('d-m-Y H:i', strtotime($r['created_at']))) ?></small></div></div><?php endforeach; ?></div></div><?php endif; ?>
-    <?php if ($alerts): ?><div class="card"><h2>Kontrak, masa percobaan & dokumen (30 hari) <span class="side"><a href="hr.php?m=employees&ks=kontrak">Karyawan kontrak ›</a></span></h2><div class="list">
-      <?php foreach ($alerts as $a): ?><div class="li"><span class="avatar"><?= h(initials($a['emp']['pegawai_nama'])) ?></span>
-        <div class="meta"><a href="hr.php?m=employee&id=<?= (int)$a['emp']['pegawai_id'] ?>&tab=<?= isset($a['tab']) ? $a['tab'] : 'employment' ?>"><b><?= h($a['emp']['pegawai_nama']) ?></b></a><small><?= h($a['what']) ?> <?= h(fmt_date($a['date'])) ?></small></div>
-        <span class="pill <?= $a['date'] < $today ? 'bad' : 'warn' ?>"><?= $a['date'] < $today ? 'lewat ' . (int)((strtotime($today) - strtotime($a['date'])) / 86400) . ' hari' : (int)((strtotime($a['date']) - strtotime($today)) / 86400) . ' hari lagi' ?></span></div><?php endforeach; ?>
-    </div></div><?php endif; ?>
+    <?php $anns = current_announcements($today, 5); $taskCount = count($pending) + $otPend + $rbPend + count($profileReqs); ?>
+    <div class="card tabcard">
+      <div class="tabs" id="hometabs">
+        <a href="#" data-tab="ann" class="on">Pengumuman <span class="count"><?= count($anns) ?></span></a>
+        <a href="#" data-tab="contract">Kontrak & masa percobaan <span class="count"><?= count($alerts) ?></span></a>
+        <a href="#" data-tab="tasks">Tugas <span class="count"><?= $taskCount ?></span></a>
+      </div>
+      <div class="tabpane" data-pane="ann"><div class="list">
+        <?php foreach ($anns as $a): ?><div class="li"><div class="meta"><b><?= h($a['title']) ?></b><small><?= $a['event_date'] ? h(fmt_date($a['event_date'])) . ' · ' : '' ?><?= h(mb_substr(trim(strip_tags($a['body'])), 0, 120)) ?></small></div></div><?php endforeach; ?>
+        <?php if (!$anns): ?><div class="muted">Belum ada pengumuman.</div><?php endif; ?></div>
+        <div class="side-link"><a href="company.php">Kelola pengumuman ›</a></div></div>
+      <div class="tabpane" data-pane="contract" hidden><div class="list">
+        <?php foreach ($alerts as $a): ?><div class="li"><span class="avatar"><?= h(initials($a['emp']['pegawai_nama'])) ?></span>
+          <div class="meta"><a href="hr.php?m=employee&id=<?= (int)$a['emp']['pegawai_id'] ?>&tab=<?= isset($a['tab']) ? $a['tab'] : 'employment' ?>"><b><?= h($a['emp']['pegawai_nama']) ?></b></a><small><?= h($a['what']) ?> <?= h(fmt_date($a['date'])) ?></small></div>
+          <span class="pill <?= $a['date'] < $today ? 'bad' : 'warn' ?>"><?= $a['date'] < $today ? 'lewat ' . (int)((strtotime($today) - strtotime($a['date'])) / 86400) . ' hari' : (int)((strtotime($a['date']) - strtotime($today)) / 86400) . ' hari lagi' ?></span></div><?php endforeach; ?>
+        <?php if (!$alerts): ?><div class="muted">Tidak ada kontrak, masa percobaan atau dokumen yang berakhir dalam 30 hari.</div><?php endif; ?></div>
+        <div class="side-link"><a href="hr.php?m=employees&ks=kontrak">Karyawan kontrak ›</a></div></div>
+      <div class="tabpane" data-pane="tasks" hidden><div class="list">
+        <?php foreach ([['Persetujuan cuti / izin', count($pending), 'hr.php?m=timeoff'], ['Persetujuan lembur', $otPend, 'hr.php?m=overtime'], ['Persetujuan reimbursement', $rbPend, 'payroll.php?p=reimburse']] as $t): ?>
+          <div class="li"><div class="meta"><a href="<?= $t[2] ?>"><b><?= h($t[0]) ?></b></a></div><span class="pill <?= $t[1] ? 'warn' : 'grey' ?>"><?= (int)$t[1] ?></span></div><?php endforeach; ?>
+        <?php foreach ($profileReqs as $r): ?><div class="li"><span class="avatar"><?= h(initials($r['pegawai_nama'])) ?></span><div class="meta"><a href="hr.php?m=employee&id=<?= (int)$r['pegawai_id'] ?>&tab=personal"><b>Perubahan data pribadi: <?= h($r['pegawai_nama']) ?></b></a><small><?= h(date('d-m-Y H:i', strtotime($r['created_at']))) ?></small></div></div><?php endforeach; ?></div></div>
+    </div>
+    <script>document.querySelectorAll('#hometabs a').forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault();
+      document.querySelectorAll('#hometabs a').forEach(function (x) { x.classList.toggle('on', x === a); });
+      document.querySelectorAll('.tabcard .tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== a.getAttribute('data-tab'); }); }); });</script>
     <div class="grid3">
-      <div class="card"><h2>Cuti / izin 7 hari ke depan</h2><div class="list">
+      <div class="card"><h2>Cuti / izin
+        <span class="side"><?php foreach (['' => 'Hari ini', 'tomorrow' => 'Besok', 'week' => '7 hari'] as $k => $l): ?><a href="hr.php?m=home&dep=<?= $depF ?>&off=<?= $k ?>"<?= get('off') === (string)$k || ($k === '' && !in_array(get('off'), ['tomorrow', 'week'], true)) ? ' style="font-weight:600"' : '' ?>><?= $l ?></a> <?php endforeach; ?></span></h2><div class="list">
         <?php foreach ($off as $r): ?><div class="li"><span class="code"><?= date('d', strtotime($r['izin_tgl'])) ?></span><div class="meta"><b><?= h($r['pegawai_nama']) ?></b><small><?= h($r['izin_jenis_name']) ?> · <?= h(fmt_date($r['izin_tgl'])) ?></small></div></div><?php endforeach; ?>
-        <?php if (!$off): ?><div class="muted">Tidak ada.</div><?php endif; ?></div></div>
+        <?php if (!$off): ?><div class="muted">Tidak ada karyawan cuti / izin (<?= h(strtolower($offLabel)) ?>).</div><?php endif; ?></div></div>
       <div class="card"><h2>Pengajuan terbaru <span class="side"><a href="hr.php?m=timeoff">Semua ›</a></span></h2><div class="list">
         <?php foreach (array_slice($pending, 0, 6) as $r): ?><div class="li"><span class="avatar"><?= h(initials($r['pegawai_nama'])) ?></span>
           <div class="meta"><b><?= h($r['pegawai_nama']) ?></b><small><?= h($r['izin_jenis_name']) ?> · <?= h(fmt_date($r['izin_tgl'])) ?> · <?= h($r['izin_catatan']) ?></small></div><?= decide_buttons($r, $csrf, $back) ?></div><?php endforeach; ?>
