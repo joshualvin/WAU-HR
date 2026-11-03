@@ -17,6 +17,9 @@ function hris_icon($name)
         'brief'    => '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 13h18"/>',
         'building' => '<path d="M4 21V5l8-3v19M12 8h8v13M8 8v.01M8 12v.01M8 16v.01M16 12v.01M16 16v.01M2 21h20"/>',
         'search'   => '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+        'plus'     => '<path d="M12 5v14M5 12h14"/>',
+        'bell'     => '<path d="M6 17h12l-1.5-2.5V10a4.5 4.5 0 0 0-9 0v4.5z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+        'plug'     => '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>',
         'chev'     => '<path d="M9 6l6 6-6 6"/>',
     ];
     return '<svg viewBox="0 0 24 24" aria-hidden="true">' . $p[$name] . '</svg>';
@@ -29,22 +32,36 @@ function hris_modules()
         'home'     => ['Beranda', 'home', ['home' => 'Beranda']],
         'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan', 'transfer.php' => 'Mutasi karyawan', 'recruit.php?p=manpower' => 'Manpower planning', 'talent.php?p=onboarding' => 'Onboarding & offboarding', 'discipline.php' => 'Surat peringatan']],
         'recruit'  => ['Rekrutmen', 'brief', ['recruit.php?p=jobs' => 'Lowongan & kandidat', 'careers.php' => 'Halaman karir']],
-        'time'     => ['Manajemen Waktu', 'clock', ['attendance' => 'Kehadiran', 'shifts' => 'Jadwal shift', 'swaps' => 'Tukar shift', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'balance' => 'Saldo cuti', 'gps.php' => 'Scan GPS (FiO)']],
+        'time'     => ['Waktu', 'clock', ['timeoff' => 'Cuti & Izin', 'attendance' => 'Kehadiran', 'gps.php' => 'Scan GPS (FiO)', 'overtime' => 'Lembur', 'shifts' => 'Jadwal shift', 'swaps' => 'Tukar shift', 'balance' => 'Saldo cuti']],
         'finance'  => ['Keuangan', 'wallet', ['payroll.php?p=reimburse' => 'Reimbursement', 'payroll.php?p=loans' => 'Kasbon', 'payroll.php?p=bonus' => 'Bonus penjualan']],
-        'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=bupot' => 'Bukti potong', 'payroll.php?p=components' => 'Komponen gaji', 'taxsim.php' => 'Simulasi pajak', 'payalloc.php' => 'Alokasi biaya gaji', 'payroll.php?p=settle' => 'Pesangon & penyelesaian',
-                                               'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=settings' => 'Pengaturan gaji']],
-        'performance' => ['Kinerja', 'star', ['talent.php?p=reviews' => 'Penilaian kinerja']],
-        'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset', 'activity.php' => 'Log aktivitas']],
-        'report'   => ['Laporan', 'report', ['reports' => 'Semua laporan']],
+        'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=components' => 'Komponen gaji', 'taxsim.php' => 'Simulasi pajak', 'payroll.php?p=bupot' => 'Bukti potong', 'payalloc.php' => 'Alokasi biaya gaji',
+                                               'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=settle' => 'Pesangon & penyelesaian', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=settings' => 'Pengaturan gaji']],
+        'performance' => ['Produktivitas', 'star', ['talent.php?p=reviews' => 'Penilaian kinerja', 'letters.php' => 'Template surat & dokumen']],
+        'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset', 'activity.php' => 'Log aktivitas', 'reports' => 'Laporan']],
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];
 }
 
-/** The attendance side of the system, shown as its own group in the menu: label => page. */
+/** The attendance side of the system, the "Aplikasi" group of the menu: label => page. */
 function hris_apps()
 {
-    return ['Absensi (Fingerspot)' => 'dashboard.php', 'Input Cepat' => 'quick.php', 'Revisi Scan Manual' => 'manual.php', 'Scan Tidak Lengkap' => 'missing.php',
-            'Daftar mesin' => 'devices.php', 'Download Fingerspot.io' => 'cloud.php', 'Portal Pegawai' => 'portal.php'];
+    return ['Absensi (Fingerspot)' => 'dashboard.php', 'Input Cepat' => 'quick.php', 'Revisi Scan Manual' => 'manual.php', 'Scan Tidak Lengkap' => 'missing.php', 'Daftar mesin' => 'devices.php', 'Portal Pegawai' => 'portal.php'];
+}
+
+/** The "Integrasi" group of the menu: where data comes in from other systems. */
+function hris_integrations()
+{
+    return ['Fingerspot.io (unduh scan)' => 'cloud.php', 'Fingerspot Personnel (sinkron)' => 'sync.php', 'FTM kantor pusat' => 'ftm.php'];
+}
+
+/** Things waiting for HR: leave and overtime requests, reimbursements and profile changes (the bell in the top bar). */
+function hris_pending_count()
+{
+    $c = function ($sql, $params = []) { try { return (int)q($sql, $params)->fetchColumn(); } catch (Exception $e) { return 0; } };   // a table may not exist yet on a fresh install
+    $n = 0;
+    if (defined('REQ_PENDING')) $n += $c('SELECT COUNT(*) FROM izin WHERE izin_status = 0 AND ket_status = ? AND izin_jenis_id NOT BETWEEN 100 AND 105', [REQ_PENDING]);
+    if (defined('CLAIM_PENDING')) foreach (['web_overtime', 'web_reimburse'] as $t) $n += $c("SELECT COUNT(*) FROM $t WHERE status = ?", [CLAIM_PENDING]);
+    return $n + $c("SELECT COUNT(*) FROM web_profile_request WHERE status = 'pending'");
 }
 
 /** A section menu key is an hr.php module, or a full page link such as payroll.php?p=run. */
@@ -78,8 +95,12 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
   <form method="get" action="hr.php" class="search" style="margin-right:6px"><?= hris_icon('search') ?>
     <input type="hidden" name="m" value="employees"><input type="search" name="q" placeholder="Cari karyawan" style="width:200px"></form>
   <a class="btn small" href="dashboard.php" title="Layar absensi gaya Fingerspot"><?= hris_icon('finger') ?> Absensi (Fingerspot)</a>
+  <div class="quickadd"><button type="button" class="iconbtn" aria-label="Tambah" aria-haspopup="true"><?= hris_icon('plus') ?></button>
+    <div class="dropmenu" role="menu"><a href="employee_edit.php">Tambah karyawan</a><a href="quick.php">Input Cepat (tidak scan / dinas)</a><a href="scans.php?add=1#add">Tambah scan manual</a><a href="letters.php?p=make">Buat surat</a><a href="company.php">Pengumuman baru</a></div></div>
+  <?php $pending = hris_pending_count(); ?>
+  <a class="iconbtn bell" href="hr.php?m=home#tugas" title="<?= $pending ? $pending . ' menunggu persetujuan' : 'Tidak ada yang menunggu' ?>" aria-label="Menunggu persetujuan"><?= hris_icon('bell') ?><?php if ($pending): ?><span class="badge"><?= $pending > 99 ? '99+' : $pending ?></span><?php endif; ?></a>
   <span class="userchip"><span class="avatar"><?= h(initials($u['full_name'] ?: $u['username'])) ?></span>
-    <span class="usertext"><b><?= h($u['full_name'] ?: $u['username']) ?></b><small><a href="logout.php">Keluar</a></small></span></span>
+    <span class="usertext"><b><?= h($u['full_name'] ?: $u['username']) ?></b><small><?= h($company) ?> · <a href="logout.php">Keluar</a></small></span></span>
 </header>
 <div class="shell">
   <aside class="rail wide" aria-label="Menu utama">
@@ -87,7 +108,7 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
     $navItem = function ($label, $icon, $href, $on, $subs, $subOn) { ?>
       <div class="navgroup<?= count($subs) > 1 ? ' has' : '' ?><?= $on ? ' cur' : '' ?>">
         <a class="item<?= $on ? ' on' : '' ?>" href="<?= h($href) ?>"><?= hris_icon($icon) ?><span class="lbl"><?= h($label) ?></span><?php if (count($subs) > 1): ?><span class="chev"><?= hris_icon('chev') ?></span><?php endif; ?></a>
-        <?php if (count($subs) > 1): ?><div class="fly" role="menu"><div class="flytitle"><?= h($label) ?></div>
+        <?php if (count($subs) > 1): ?><div class="fly" role="menu">
           <?php foreach ($subs as $k => $l): ?><a href="<?= h($k) ?>"<?= $k === $subOn ? ' class="on"' : '' ?>><?= h($l) ?></a><?php endforeach; ?></div><?php endif; ?>
       </div>
     <?php };
@@ -99,14 +120,16 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
     } ?>
     <hr class="sep">
     <?php $apps = []; foreach (hris_apps() as $l => $href) $apps[$href] = $l;
-    $navItem('Aplikasi', 'finger', 'dashboard.php', false, $apps, null); ?>
+    $navItem('Aplikasi', 'finger', 'dashboard.php', false, $apps, null);
+    $integ = []; foreach (hris_integrations() as $l => $href) $integ[$href] = $l;
+    $navItem('Integrasi', 'plug', 'cloud.php', false, $integ, null); ?>
     <hr class="sep">
     <?php $navItem($mods['settings'][0], $mods['settings'][1], $mods['settings'][2], false, [], null); ?>
-    <div class="bottom"><span class="cid"><?= h($company) ?></span>
-      <button type="button" class="railtoggle" id="railtoggle" title="Ciutkan menu" aria-label="Ciutkan menu"><?= hris_icon('chev') ?></button></div>
+    <div class="bottom"><button type="button" class="railtoggle" id="railtoggle" title="Ciutkan menu" aria-label="Ciutkan menu"><?= hris_icon('chev') ?></button>
+      <span class="cid"><?= h($company) ?></span></div>
   </aside>
   <main>
-    <div class="band"><h1><?php if ($crumb): ?><span class="crumb"><?= $crumb ?></span><?php endif; ?><?= h($title) ?></h1><?= $actions ?></div>
+    <?php if ($module !== 'home'): ?><div class="band"><h1><?php if ($crumb): ?><span class="crumb"><?= $crumb ?></span><?php endif; ?><?= h($title) ?></h1><?= $actions ?></div><?php endif; ?>
     <?php foreach (take_flashes() as $f): ?><div class="flash <?= h($f[0]) ?>"><?= h($f[1]) ?></div><?php endforeach; ?>
     <div class="content">
 <?php

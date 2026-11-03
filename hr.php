@@ -310,7 +310,8 @@ if ($m === 'home'):
     </div>
     <script>document.querySelectorAll('#hometabs a').forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault();
       document.querySelectorAll('#hometabs a').forEach(function (x) { x.classList.toggle('on', x === a); });
-      document.querySelectorAll('.tabcard .tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== a.getAttribute('data-tab'); }); }); });</script>
+      document.querySelectorAll('.tabcard .tabpane').forEach(function (p) { p.hidden = p.getAttribute('data-pane') !== a.getAttribute('data-tab'); }); }); });
+      if (location.hash === '#tugas') document.querySelector('#hometabs a[data-tab="tasks"]').click();   // the bell in the top bar</script>
     <div class="grid3">
       <div class="card"><h2>Cuti / izin
         <span class="side"><?php foreach (['' => 'Hari ini', 'tomorrow' => 'Besok', 'week' => '7 hari'] as $k => $l): ?><a href="hr.php?m=home&dep=<?= $depF ?>&off=<?= $k ?>"<?= get('off') === (string)$k || ($k === '' && !in_array(get('off'), ['tomorrow', 'week'], true)) ? ' style="font-weight:600"' : '' ?>><?= $l ?></a> <?php endforeach; ?></span></h2><div class="list">
@@ -452,7 +453,6 @@ elseif ($m === 'employee'):
     <div class="section" style="max-width:none;margin-top:16px"><h2>Atasan & aset</h2>
       <p style="margin:0">Atasan langsung: <?= $boss ? '<a href="hr.php?m=employee&id=' . (int)$boss['pegawai_id'] . '">' . h($boss['pegawai_nama']) . '</a>' : '<span class="muted">belum diatur</span>' ?> · <a href="company.php?p=org">atur</a></p>
       <?php if ($held): ?><p style="margin:6px 0 0">Aset dipakai: <?= h(implode(', ', array_map(function ($a) { return $a['name'] . ($a['serial'] ? ' (' . $a['serial'] . ')' : ''); }, $held))) ?> · <a href="company.php?p=assets&f=out">kelola</a></p><?php else: ?><p class="muted" style="margin:6px 0 0">Tidak memegang aset.</p><?php endif; ?></div>
-    <?php $hist = q('SELECT * FROM web_employment WHERE pegawai_id = ? ORDER BY start_date DESC, id DESC', [$id])->fetchAll(); $cur = $hist ? $hist[0] : null; ?>
     <?php $moves = q('SELECT * FROM web_transfer WHERE pegawai_id = ? ORDER BY effective_date DESC, id DESC LIMIT 10', [$id])->fetchAll(); $tnames = transfer_names(); ?>
     <div class="section" style="max-width:none;margin-top:16px"><h2>Riwayat mutasi <?php if ($me['role'] === 'admin'): ?><span class="side"><a href="transfer.php?p=new&pegawai_id=<?= $id ?>">+ Buat mutasi</a> · <a href="transfer.php?pegawai_id=<?= $id ?>">Semua</a></span><?php endif; ?></h2>
       <?php if ($moves): ?><div class="tablescroll"><table>
@@ -463,6 +463,7 @@ elseif ($m === 'employee'):
             <td style="white-space:nowrap"><?= h(date('d-m-Y', strtotime($mv['effective_date']))) ?></td><td><span class="pill <?= $mst[1] ?>"><?= h($mst[0]) ?></span></td></tr>
         <?php endforeach; ?></tbody></table></div>
       <?php else: ?><p class="muted">Belum ada mutasi.</p><?php endif; ?></div>
+    <?php $hist = q('SELECT * FROM web_employment WHERE pegawai_id = ? ORDER BY start_date DESC, id DESC', [$id])->fetchAll(); $cur = $hist ? $hist[0] : null; ?>
     <div class="section" style="max-width:none;margin-top:16px"><h2>Status kepegawaian <?= employment_pill($cur) ?></h2>
       <?php if ($hist): ?><div class="tablescroll"><table>
         <thead><tr><th>Status</th><th>No. kontrak / SK</th><th>Mulai</th><th>Berakhir</th><th>Masa percobaan s/d</th><th>Catatan</th><th>Dicatat</th><?php if ($me['role'] === 'admin'): ?><th class="actions"></th><?php endif; ?></tr></thead><tbody>
