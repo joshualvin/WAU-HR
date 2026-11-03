@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['xlsx']) && $_FILES['
     elseif ($to > date('Y-m-d')) $error = 'Tanggal akhir tidak boleh setelah hari ini.';
     elseif (!$picked) $error = 'Pilih minimal satu mesin.';
     else {
-        $results = cloud_download($from, $to, $picked);
+        $results = cloud_download($from, $to, $picked, false, 200);   // 200 s budget: stay inside the web server's time limit
         $added = array_sum(array_column($results, 'added'));
         audit('cloud_download', "$from..$to: $added scan baru");
         $devices = cloud_devices();
@@ -80,7 +80,7 @@ page_header('Download Fingerspot.io', 'cloud.php');
       <label style="flex-direction:row;align-items:center;gap:4px">Tanggal <input type="date" name="from" value="<?= h($from) ?>" min="<?= $oldest ?>" max="<?= date('Y-m-d') ?>"></label>
       <label style="flex-direction:row;align-items:center;gap:4px">s/d <input type="date" name="to" value="<?= h($to) ?>" min="<?= $oldest ?>" max="<?= date('Y-m-d') ?>"></label>
       <button class="btn primary" <?= $hasToken && $devices ? '' : 'disabled' ?>>Download</button>
-      <span class="muted">Lewat API Fingerspot Personnel. Data tersedia 60 hari terakhir; scan yang sudah ada tidak ditambah dua kali.</span>
+      <span class="muted">Lewat API Fingerspot Personnel. Data tersedia 60 hari terakhir, tanpa tanggal masa depan. Fingerspot membatasi tarik data online 1 kali per menit per mesin, jadi tiap hari yang ada datanya butuh sekitar 1 menit; jika waktu habis, klik Download lagi. Scan yang sudah ada tidak ditambah dua kali.</span>
     </div>
   </form>
 </div>

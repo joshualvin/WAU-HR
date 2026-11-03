@@ -102,6 +102,12 @@ function cloud_ds_base()
     return rtrim(!empty($CONFIG['fingerspot_ds_url']) ? $CONFIG['fingerspot_ds_url'] : 'https://api-ds.fingerspot.io/api/desktop/attendance_log', '/');
 }
 
+/** Scheme + host of the desktop API, e.g. https://api-ds.fingerspot.io */
+function cloud_ds_origin()
+{
+    return preg_replace('#^(https?://[^/]+).*$#', '$1', cloud_ds_base());
+}
+
 /** The per-request signature for one device and day (recipe confirmed with cloud.php?probe). */
 function cloud_ds_token($cloudId, $date, $key, $now)
 {
@@ -145,54 +151,113 @@ function cloud_row_ds($r)
             'type_id' => $pick(['Type ID', 'Log Type'], 0), 'work_code' => $pick(['Work Code'], 0)];
 }
 
-/** One desktop-API call for a device and upload date (Y-m-d). Returns [rows, error]. */
-function cloud_get_attlog_ds($cloudId, $date)
+/** Seconds to keep between two calls for one machine: Fingerspot limits the online data pull to once a minute. */
+function cloud_min_interval()
 {
-    $ch = curl_init(cloud_ds_url($cloudId, $date, cloud_token(), date('YmdHis')));
+    global $CONFIG;
+    return isset($CONFIG['fingerspot_min_interval']) ? max(0, (int)$CONFIG['fingerspot_min_interval']) : 61;
+}
+
+/** Wait until the minimum interval passed since this machine's last call, then note the new call. */
+function cloud_throttle($cloudId)
+{
+    static $last = [];
+    if (isset($last[$cloudId])) { $wait = $last[$cloudId] + cloud_min_interval() - time(); if ($wait > 0) sleep($wait); }
+    $last[$cloudId] = time();
+}
+
+/** GET a desktop-API URL. Returns [json array, error]. */
+function cloud_ds_get($url)
+{
+    $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
     $raw = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
-    if ($raw === false) return [[], 'Tidak bisa terhubung ke api-ds.fingerspot.io: ' . $err];
+    if ($raw === false) return [null, 'Tidak bisa terhubung ke api-ds.fingerspot.io: ' . $err];
     $json = json_decode($raw, true);
-    if (!is_array($json)) return [[], "HTTP $http: " . substr(strip_tags($raw), 0, 120)];
-    if (empty($json['success'])) return [[], 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : substr($raw, 0, 100)) . ' (kunci API salah atau permintaan tidak dikenal)'];
+    if (!is_array($json)) return [null, "HTTP $http: " . substr(strip_tags($raw), 0, 120)];
+    if (empty($json['success'])) return [null, 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : substr(preg_replace('/\s+/', ' ', $raw), 0, 100)) . ' (kunci API salah atau permintaan tidak dikenal)'];
+    return [$json, null];
+}
+
+/** Days from $from to $to (Y-m-d) on which the cloud received scans of a device: date_list/{key}/{cloud}/{from}/{to}. */
+function cloud_get_dates_ds($cloudId, $from, $to)
+{
+    list($json, $err) = cloud_ds_get(cloud_ds_origin() . '/api/desktop/date_list/' . rawurlencode(cloud_token()) . '/' . rawurlencode($cloudId) . "/$from/$to");
+    if ($err) return [[], $err];
+    $dates = [];
+    foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if (isset($r['date'])) $dates[] = substr((string)$r['date'], 0, 10);
+    return [$dates, null];
+}
+
+/** One desktop-API attendance_log call for a device and upload date (Y-m-d). Returns [rows, error]. */
+function cloud_get_attlog_ds($cloudId, $date)
+{
+    list($json, $err) = cloud_ds_get(cloud_ds_url($cloudId, $date, cloud_token(), date('YmdHis')));
+    if ($err) return [[], $err];
     $rows = [];
     foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
     return [$rows, null];
 }
 
-/** Scans per [machine sn => ...] that reached Fingerspot.io on $from..$to (one request per machine per upload date). */
-function cloud_download($from, $to, $sns = [], $gps = false)
+/**
+ * Scans per [machine sn => result] that reached Fingerspot.io on $from..$to (never later than today). Per machine one
+ * date_list call finds the days with data, then one attendance_log call per such day; calls to one machine are 60 s apart
+ * (cloud_throttle) and the machines take turns. With $budget seconds (web page) it stops when the time is up and reports
+ * the days left; run it again to continue. last_download_web only moves up to the last day covered, and only for a machine
+ * that finished without errors, so a partial run never makes the next one skip data.
+ */
+function cloud_download($from, $to, $sns = [], $gps = false, $budget = 0)
 {
-    @set_time_limit(600);
+    @set_time_limit(0);
     ensure_cloud_tables();
+    $started = time();
+    $to = min($to, date('Y-m-d'));   // no future dates
     $known = array_flip(q('SELECT pegawai_pin FROM pegawai')->fetchAll(PDO::FETCH_COLUMN));
     $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, ?, 0)');
-    $targets = [];
-    // Cloud IDs are upper-case hex on Fingerspot.io
-    foreach (cloud_devices() as $d) if (!$sns || in_array($d['sn'], $sns, true)) $targets[$d['sn']] = [strtoupper(trim($d['cloud_id'])), $d['device_name']];
     $out = [];
-    foreach ($targets as $sn => $t) {
-        $res = ['name' => $t[1], 'received' => 0, 'added' => 0, 'unknown_pins' => [], 'errors' => []];
-        for ($day = $from; $day <= $to; $day = date('Y-m-d', strtotime($day . ' +1 day'))) {
-            list($rows, $err) = cloud_get_attlog_ds($t[0], $day);
+    $queue = [];   // sn => [cloud id, days left]
+    if ($from > $to) return $out;
+    // Cloud IDs are upper-case hex on Fingerspot.io
+    foreach (cloud_devices() as $d) {
+        if ($sns && !in_array($d['sn'], $sns, true)) continue;
+        $cid = strtoupper(trim($d['cloud_id']));
+        $out[$d['sn']] = ['name' => $d['device_name'], 'received' => 0, 'added' => 0, 'unknown_pins' => [], 'errors' => [], 'complete' => true];
+        cloud_throttle($cid);
+        list($dates, $err) = cloud_get_dates_ds($cid, $from, $to);
+        if ($err) { $out[$d['sn']]['errors'][] = $err; $out[$d['sn']]['complete'] = false; continue; }
+        $dates = array_values(array_filter($dates, function ($x) use ($to) { return $x <= $to; }));
+        if ($dates) $queue[$d['sn']] = [$cid, $dates];
+    }
+    while ($queue) {
+        foreach (array_keys($queue) as $sn) {
+            if ($budget && time() - $started >= $budget) {
+                foreach ($queue as $sn2 => $q2) { $out[$sn2]['errors'][] = 'Belum selesai (batas waktu): ' . implode(', ', $q2[1]) . ' — klik Download lagi untuk melanjutkan'; $out[$sn2]['complete'] = false; }
+                break 2;
+            }
+            list($cid, $days) = $queue[$sn];
+            $day = array_shift($days);
+            cloud_throttle($cid);
+            list($rows, $err) = cloud_get_attlog_ds($cid, $day);
             if ($err) {
-                $res['errors'][] = "$day: $err";
-                if (preg_match('/Access Denied|apikey|jatuh tempo|HTTP 40/i', $err)) break;   // auth problem: later days fail too
-                continue;
+                $out[$sn]['errors'][] = "$day: $err";
+                $out[$sn]['complete'] = false;
+                if (preg_match('/Access Denied|HTTP 40/i', $err)) $days = [];   // will not get better on the next day
             }
             foreach ($rows as $r) {
-                $res['received']++;
+                $out[$sn]['received']++;
                 $ins->execute([$sn, $r['scan_date'], $r['pin'], $r['verify'], $r['type_id'], $r['work_code']]);
-                $res['added'] += $ins->rowCount();
-                if (!isset($known[$r['pin']])) $res['unknown_pins'][$r['pin']] = true;
+                $out[$sn]['added'] += $ins->rowCount();
+                if (!isset($known[$r['pin']])) $out[$sn]['unknown_pins'][$r['pin']] = true;
             }
+            if ($days) $queue[$sn][1] = $days; else unset($queue[$sn]);
         }
-        if (!$res['errors'] || $res['received']) q('UPDATE device SET last_download_web = ? WHERE sn = ?', [date('Y-m-d'), $sn]);
-        $res['unknown_pins'] = array_keys($res['unknown_pins']);
-        $out[$sn] = $res;
+    }
+    foreach ($out as $sn => $res) {
+        if ($res['complete']) q('UPDATE device SET last_download_web = ? WHERE sn = ?', [$to, $sn]);
+        $out[$sn]['unknown_pins'] = array_keys($res['unknown_pins']);
     }
     return $out;
 }
