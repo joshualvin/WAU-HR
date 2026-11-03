@@ -220,14 +220,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // a change of pay is kept in the history from the chosen date; the first time, the old amounts are kept
             // as the history before it, so earlier periods still calculate with them
             $old = isset($before[$id]) ? $before[$id] : null;
-            if ($old && ($num('gaji_pokok') != $old['gaji_pokok'] || $num('tunjangan') != $old['tunjangan'] || $num('uang_harian') != $old['uang_harian'])) {
+            if ($old && ($num('gaji_pokok') != $old['gaji_pokok'] || $num('tunjangan') != $old['tunjangan'] || $num('uang_harian') != $old['uang_harian'] || $num('upah_harian') != $old['upah_harian'])) {
                 if (!q('SELECT COUNT(*) FROM web_pay_history WHERE pegawai_id = ?', [(int)$id])->fetchColumn())
-                    save_pay_history((int)$id, '2000-01-01', $old['gaji_pokok'], $old['tunjangan'], $old['uang_harian'], 'Sebelum riwayat dicatat');
-                save_pay_history((int)$id, $eff, $num('gaji_pokok'), $num('tunjangan'), $num('uang_harian'), post('note'));
+                    save_pay_history((int)$id, '2000-01-01', $old['gaji_pokok'], $old['tunjangan'], $old['uang_harian'], 'Sebelum riwayat dicatat', $old['upah_harian']);
+                save_pay_history((int)$id, $eff, $num('gaji_pokok'), $num('tunjangan'), $num('uang_harian'), post('note'), $num('upah_harian'));
             }
             $ptkp = isset($v['ptkp']) && in_array($v['ptkp'], ptkp_options(), true) ? $v['ptkp'] : 'TK/0';
-            q('REPLACE INTO web_pay_emp (pegawai_id, gaji_pokok, tunjangan, uang_harian, ptkp, npwp, bpjs_kes, bpjs_tk, bpjs_jp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [(int)$id, $num('gaji_pokok'), $num('tunjangan'), $num('uang_harian'), $ptkp, substr(trim(isset($v['npwp']) ? $v['npwp'] : ''), 0, 30),
+            q('REPLACE INTO web_pay_emp (pegawai_id, gaji_pokok, tunjangan, uang_harian, upah_harian, ptkp, npwp, bpjs_kes, bpjs_tk, bpjs_jp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [(int)$id, $num('gaji_pokok'), $num('tunjangan'), $num('uang_harian'), $num('upah_harian'), $ptkp, substr(trim(isset($v['npwp']) ? $v['npwp'] : ''), 0, 30),
                  empty($v['bpjs_kes']) ? 0 : 1, empty($v['bpjs_tk']) ? 0 : 1, empty($v['bpjs_jp']) ? 0 : 1]);
             $n++;
         }
@@ -257,7 +257,7 @@ if (get('csv') !== '') {
         fputcsv($out, ['Masa', 'Tahun', 'PIN', 'Nama', 'NPWP/NIK', 'PTKP', 'Kategori TER', 'Penghasilan bruto', 'PPh 21 dipotong', 'Keterangan']);
         foreach ($rows as $r) {
             $l = json_decode($r['detail'], true);
-            fputcsv($out, [date('n', strtotime($to)), date('Y', strtotime($to)), $r['pegawai_pin'], $r['pegawai_nama'], $l['npwp'], $l['ptkp'], ter_category($l['ptkp']), $r['bruto'], $r['pph21'], $l['pph21_note']]);
+            fputcsv($out, [date('n', strtotime($to)), date('Y', strtotime($to)), $r['pegawai_pin'], $r['pegawai_nama'], $l['npwp'], $l['ptkp'], isset($l['pay_type']) && $l['pay_type'] === 'daily' ? 'Harian (bukan pegawai tetap)' : ter_category($l['ptkp']), $r['bruto'], $r['pph21'], $l['pph21_note']]);
         }
     } else {                         // payroll report and transfer list
         fputcsv($out, ['PIN', 'Nama', 'Periode', 'Hari hadir', 'Pendapatan', 'Potongan', 'PPh 21', 'Take home pay', 'Bank', 'Nama rekening', 'No. rekening']);
@@ -635,7 +635,7 @@ h1{font-size:17px;margin:0}table{width:100%;border-collapse:collapse;margin-top:
     else:
         $list = q('SELECT s.*, p.pegawai_nama FROM web_settlement s JOIN pegawai p ON p.pegawai_id = s.pegawai_id ORDER BY s.created_at DESC')->fetchAll();
         $people = q('SELECT pegawai_id, pegawai_nama, pegawai_pin, tgl_mulai_kerja FROM pegawai WHERE pegawai_status = 1 OR tgl_resign >= ? ORDER BY pegawai_nama', [date('Y-m-d', strtotime('-90 days'))])->fetchAll();
-        $pays = pay_data_as_of(date('Y-m-d')); $comps = components_as_of(date('Y-m-d')); $defs = pay_components(false);
+        $pays = pay_data_as_of(date('Y-m-d')); $comps = components_as_of(date('Y-m-d')); $defs = pay_components(false); $status = current_employment(); $dm = payroll_settings()['daily_month_days'];
         hris_header('Pesangon & penyelesaian', 'payroll', 'payroll.php?p=settle', 'Penggajian'); ?>
   <div class="tablecard"><div class="tablescroll"><table>
     <thead><tr><th>Nama karyawan</th><th>Alasan</th><th>Berakhir</th><th class="num">Diterima</th><th>Status</th><th class="actions">Aksi</th></tr></thead><tbody>
@@ -649,7 +649,7 @@ h1{font-size:17px;margin:0}table{width:100%;border-collapse:collapse;margin-top:
       <label class="field"><span>Karyawan</span><select name="pegawai_id" required onchange="var o=this.selectedOptions[0];this.form.start.value=o.dataset.start||'';this.form.upah.value=o.dataset.upah||'';this.form.leave_days.value=o.dataset.leave||0">
         <option value="">Pilih…</option>
         <?php foreach ($people as $e): $id = (int)$e['pegawai_id']; $pd = isset($pays[$id]) ? $pays[$id] : null;
-            $u = $pd ? $pd['gaji_pokok'] + $pd['tunjangan'] : 0;
+            $u = !$pd ? 0 : (isset($status[$id]) && $status[$id]['status'] === 'harian' ? $pd['upah_harian'] * $dm : $pd['gaji_pokok'] + $pd['tunjangan']);
             foreach (isset($comps[$id]) ? $comps[$id] : [] as $cid => $amt) if (isset($defs[$cid]) && $defs[$cid]['kind'] === 'earning' && $defs[$cid]['fixed'] && $defs[$cid]['per'] === 'month') $u += $amt;
             list($quota, $taken) = leave_balance($id); ?>
           <option value="<?= $id ?>" data-start="<?= h(substr((string)$e['tgl_mulai_kerja'], 0, 10)) ?>" data-upah="<?= $u ? h(number_format($u, 0, ',', '.')) : '' ?>" data-leave="<?= $quota === null ? 0 : max(0, $quota - $taken) ?>"><?= h($e['pegawai_nama']) ?> (<?= h($e['pegawai_pin']) ?>)</option>
@@ -671,22 +671,25 @@ h1{font-size:17px;margin:0}table{width:100%;border-collapse:collapse;margin-top:
 // ======================================================================= Data gaji karyawan
 elseif ($p === 'setup'):
     $pays = pay_data();
+    $status = current_employment();
     hris_header('Data gaji karyawan', 'payroll', 'payroll.php?p=setup', 'Penggajian'); ?>
   <form method="post"><?= $csrf ?><input type="hidden" name="action" value="setup">
   <div class="toolbar" style="margin-bottom:10px"><label>Perubahan gaji berlaku mulai <input type="date" name="effective" value="<?= date('Y-m-d') ?>"></label>
     <label>Catatan <input type="text" name="note" placeholder="mis. Kenaikan UMK 2027" style="width:220px"></label>
     <span class="muted">Periode gaji sebelum tanggal ini tetap memakai gaji lama. Tunjangan lain: <a href="payroll.php?p=components">Komponen gaji</a>.</span></div>
   <div class="tablecard"><div class="tablescroll"><table>
-    <thead><tr><th>Nama karyawan</th><th>Gaji pokok / bulan</th><th>Tunjangan tetap / bulan</th><th>Uang makan + transport / hari hadir</th><th>PTKP</th><th>NPWP / NIK</th><th>BPJS Kes</th><th>BPJS TK</th><th>JP</th></tr></thead><tbody>
-    <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; $v = isset($pays[$id]) ? $pays[$id] : ['gaji_pokok' => '', 'tunjangan' => '', 'uang_harian' => '', 'ptkp' => 'TK/0', 'npwp' => '', 'bpjs_kes' => 1, 'bpjs_tk' => 1, 'bpjs_jp' => 1]; ?>
-      <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span><br><a class="muted" style="font-size:12px" href="payroll.php?p=history&id=<?= $id ?>">riwayat</a></td>
-        <?php foreach (['gaji_pokok', 'tunjangan', 'uang_harian'] as $k): ?><td><input type="text" inputmode="numeric" name="e[<?= $id ?>][<?= $k ?>]" value="<?= $v[$k] !== '' ? h(number_format((float)$v[$k], 0, ',', '.')) : '' ?>" style="width:130px;text-align:right" placeholder="0"></td><?php endforeach; ?>
+    <thead><tr><th>Nama karyawan</th><th>Gaji pokok / bulan</th><th>Tunjangan tetap / bulan</th><th>Upah harian<br><small class="muted">harian lepas</small></th><th>Uang makan + transport / hari hadir</th><th>PTKP</th><th>NPWP / NIK</th><th>BPJS Kes</th><th>BPJS TK</th><th>JP</th></tr></thead><tbody>
+    <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; $v = isset($pays[$id]) ? $pays[$id] : ['gaji_pokok' => '', 'tunjangan' => '', 'uang_harian' => '', 'upah_harian' => '', 'ptkp' => 'TK/0', 'npwp' => '', 'bpjs_kes' => 1, 'bpjs_tk' => 1, 'bpjs_jp' => 1];
+        $harian = isset($status[$id]) && $status[$id]['status'] === 'harian'; ?>
+      <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span><br><a class="muted" style="font-size:12px" href="payroll.php?p=history&id=<?= $id ?>">riwayat</a><?= $harian ? ' <span class="pill grey">harian lepas</span>' : '' ?></td>
+        <?php foreach (['gaji_pokok', 'tunjangan', 'upah_harian', 'uang_harian'] as $k): $off = $harian ? in_array($k, ['gaji_pokok', 'tunjangan'], true) : $k === 'upah_harian'; ?>
+          <td><input type="text" inputmode="numeric" name="e[<?= $id ?>][<?= $k ?>]" value="<?= $v[$k] !== '' && $v[$k] !== null ? h(number_format((float)$v[$k], 0, ',', '.')) : '' ?>" style="width:120px;text-align:right<?= $off ? ';opacity:.45' : '' ?>" placeholder="0"<?= $off ? ' title="Tidak dipakai untuk status kepegawaian ini"' : '' ?>></td><?php endforeach; ?>
         <td><select name="e[<?= $id ?>][ptkp]"><?php foreach (ptkp_options() as $o): ?><option <?= $v['ptkp'] === $o ? 'selected' : '' ?>><?= $o ?></option><?php endforeach; ?></select></td>
         <td><input type="text" name="e[<?= $id ?>][npwp]" value="<?= h($v['npwp']) ?>" style="width:170px"></td>
         <?php foreach (['bpjs_kes', 'bpjs_tk', 'bpjs_jp'] as $k): ?><td style="text-align:center"><input type="checkbox" name="e[<?= $id ?>][<?= $k ?>]" value="1" <?= $v[$k] ? 'checked' : '' ?>></td><?php endforeach; ?></tr>
     <?php endforeach; ?>
     </tbody></table></div></div>
-  <div class="formfoot"><span class="muted" style="margin-right:auto">Karyawan dengan gaji pokok dan tunjangan kosong tidak ikut proses gaji. PTKP: TK = tidak kawin, K = kawin, angka = tanggungan.</span><button class="btn primary">Simpan data gaji</button></div>
+  <div class="formfoot"><span class="muted" style="margin-right:auto">Harian lepas (status kepegawaian) dibayar upah harian × hari hadir, PPh 21 TER harian; yang lain gaji bulanan. Tanpa gaji / upah harian tidak ikut proses gaji. PTKP: TK = tidak kawin, K = kawin, angka = tanggungan.</span><button class="btn primary">Simpan data gaji</button></div>
   </form>
 <?php
 // ======================================================================= Pengaturan gaji
@@ -698,7 +701,8 @@ else:
                                    'jp_cap' => 'Batas upah JP (Rp)', 'jkk' => 'JKK (%) — sesuai tingkat risiko', 'jkm' => 'JKM (%)'],
         'Lembur & potongan' => ['ot_divisor' => 'Pembagi upah per jam (173)', 'late_per_minute' => 'Potongan terlambat per menit (Rp, 0 = tidak dipotong)',
                                 'absent_deduct' => 'Potong gaji hari tidak hadir tanpa izin (1 = ya, 0 = tidak)',
-                                'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)'],
+                                'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)',
+                                'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],
     ];
     hris_header('Pengaturan gaji', 'payroll', 'payroll.php?p=settings', 'Penggajian'); ?>
   <form method="post" class="section"><?= $csrf ?><input type="hidden" name="action" value="settings">

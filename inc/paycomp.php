@@ -35,11 +35,13 @@ function ensure_paycomp_tables()
         gaji_pokok BIGINT NOT NULL,
         tunjangan BIGINT NOT NULL,
         uang_harian BIGINT NOT NULL,
+        upah_harian BIGINT NOT NULL DEFAULT 0,
         note VARCHAR(200) NOT NULL DEFAULT '',
         created_by VARCHAR(50) NOT NULL DEFAULT '',
         created_at DATETIME NOT NULL,
         PRIMARY KEY (pegawai_id, effective_from)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+    if (!q("SHOW COLUMNS FROM web_pay_history LIKE 'upah_harian'")->fetch()) db()->exec('ALTER TABLE web_pay_history ADD upah_harian BIGINT NOT NULL DEFAULT 0');
     db()->exec("CREATE TABLE IF NOT EXISTS web_settlement (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         pegawai_id INT NOT NULL,
@@ -84,16 +86,26 @@ function pay_data_as_of($date)
     foreach (q('SELECT h.* FROM web_pay_history h JOIN (SELECT pegawai_id, MAX(effective_from) f FROM web_pay_history WHERE effective_from <= ? GROUP BY pegawai_id) l
                 ON l.pegawai_id = h.pegawai_id AND l.f = h.effective_from', [$date]) as $h) {
         if (!isset($out[$h['pegawai_id']])) continue;
-        foreach (['gaji_pokok', 'tunjangan', 'uang_harian'] as $k) $out[$h['pegawai_id']][$k] = $h[$k];
+        foreach (['gaji_pokok', 'tunjangan', 'uang_harian', 'upah_harian'] as $k) $out[$h['pegawai_id']][$k] = $h[$k];
     }
     return $out;
 }
 
 /** Record a change of basic pay / allowance / daily pay from $from (one row per employee per date). */
-function save_pay_history($pegawaiId, $from, $gaji, $tunj, $harian, $note)
+function save_pay_history($pegawaiId, $from, $gaji, $tunj, $harian, $note, $upahHarian = 0)
 {
-    q('REPLACE INTO web_pay_history (pegawai_id, effective_from, gaji_pokok, tunjangan, uang_harian, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [$pegawaiId, $from, $gaji, $tunj, $harian, mb_substr($note, 0, 200), actor(), date('Y-m-d H:i:s')]);
+    q('REPLACE INTO web_pay_history (pegawai_id, effective_from, gaji_pokok, tunjangan, uang_harian, upah_harian, note, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [$pegawaiId, $from, $gaji, $tunj, $harian, $upahHarian, mb_substr($note, 0, 200), actor(), date('Y-m-d H:i:s')]);
+}
+
+/**
+ * THR wage of a daily worker (Permenaker 6/2016 art. 3(3)): the average monthly wage over the last 12 months worked,
+ * or over all months when less. $monthly = wages per saved payslip; none yet = $fallback (daily wage x days a month).
+ */
+function thr_daily_wage($monthly, $fallback)
+{
+    $monthly = array_slice(array_values(array_filter($monthly)), -12);
+    return $monthly ? (int)round(array_sum($monthly) / count($monthly)) : (int)$fallback;
 }
 
 /**

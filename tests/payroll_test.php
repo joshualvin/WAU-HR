@@ -76,4 +76,13 @@ check('2026-12-25 is Friday', date('w', strtotime('2026-12-25')), '5');
 // THR tax with no payslip: base = wage 5,288,796 + JKK 12,693 + JKM 15,866 + Kes 211,552 = 5,528,907 (TER A 0.25% = 13,822);
 // with THR 10,817,703 (3% = 324,531): THR tax 310,709
 check('thr tax from pay data', ter_tax('TK/0', 5528907 + 5288796) - ter_tax('TK/0', 5528907), 310709);
+// Daily workers (PMK 168/2023): TER harian by average daily gross
+check('daily 300rb/day', pph21_daily(6000000, 20)[0], 0);
+check('daily 450rb exactly', pph21_daily(4500000, 10)[0], 0);
+check('daily 600rb/day 0.5%', pph21_daily(6000000, 10)[0], 30000);
+check('daily above 2.5jt: Pasal 17 on 50%', pph21_daily(6000000, 2)[0], 150000);
+// THR wage of a daily worker: average of the last 12 months, else the fallback
+check('thr daily avg', thr_daily_wage([3000000, 4000000, 5000000], 9), 4000000);
+check('thr daily last 12', thr_daily_wage(array_merge([100, 100], array_fill(0, 12, 3000000)), 9), 3000000);
+check('thr daily fallback', thr_daily_wage([], 3750000), 3750000);
 echo "payroll_test: $ok checks passed\n";

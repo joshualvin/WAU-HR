@@ -7,7 +7,7 @@ require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/talent.php';
 require __DIR__ . '/inc/recruit.php';
 require __DIR__ . '/inc/career.php';
-require __DIR__ . '/inc/employment.php';
+require_once __DIR__ . '/inc/employment.php';
 $me = require_login('admin');
 ensure_web_tables();
 ensure_recruit_tables();

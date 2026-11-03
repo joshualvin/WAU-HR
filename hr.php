@@ -6,7 +6,7 @@ require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/shifts.php';
-require __DIR__ . '/inc/employment.php';
+require_once __DIR__ . '/inc/employment.php';
 require __DIR__ . '/inc/discipline.php';
 $me = require_login();
 ensure_web_tables();

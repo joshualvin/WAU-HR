@@ -251,25 +251,39 @@ function calculate_thr($holiday, $payDate, $overrides = [])
     $pays = pay_data_as_of($holiday);
     $comps = components_as_of($holiday);
     $defs = pay_components(false);
+    $status = current_employment();
+    $dm = payroll_settings()['daily_month_days'];
     $out = [];
     foreach (q('SELECT pegawai_id, pegawai_pin, pegawai_nama, tgl_mulai_kerja, tgl_masuk_pertama FROM pegawai WHERE pegawai_status = 1 ORDER BY pegawai_nama') as $e) {
         $id = $e['pegawai_id'];
-        if (empty($pays[$id]) || $pays[$id]['gaji_pokok'] + $pays[$id]['tunjangan'] <= 0) continue;
+        $daily = isset($status[$id]) && $status[$id]['status'] === 'harian';
+        if (empty($pays[$id]) || ($daily ? $pays[$id]['upah_harian'] : $pays[$id]['gaji_pokok'] + $pays[$id]['tunjangan']) <= 0) continue;
         $p = $pays[$id];
         $start = $e['tgl_mulai_kerja'] ?: $e['tgl_masuk_pertama'];
         $months = service_months($start, $holiday);
         // THR wage = basic pay + fixed allowances (incl. fixed components) in force at the holiday
         $upah = (int)($p['gaji_pokok'] + $p['tunjangan']);
+        if ($daily) {   // average monthly daily-wage earnings of the last 12 saved payslips
+            $monthly = [];
+            foreach (q('SELECT detail FROM web_payslip WHERE pegawai_id = ? AND period_to <= ? ORDER BY period_to', [$id, $holiday]) as $sl) {
+                $sum = 0; foreach (json_decode($sl['detail'], true)['earnings'] as $k => $v) if (strpos($k, 'Upah harian') === 0) $sum += $v;
+                $monthly[] = $sum;
+            }
+            $upah = thr_daily_wage($monthly, $p['upah_harian'] * $dm);
+        }
         foreach (isset($comps[$id]) ? $comps[$id] : [] as $cid => $amt) if (isset($defs[$cid]) && $defs[$cid]['kind'] === 'earning' && $defs[$cid]['fixed'] && $defs[$cid]['per'] === 'month') $upah += $amt;
         $rule = thr_amount($upah, $months);
         $amount = isset($overrides[$id]) ? max(0, (int)$overrides[$id]) : $rule;
         $base = q('SELECT bruto, period_to FROM web_payslip WHERE pegawai_id = ? AND period_to <= ? ORDER BY period_to DESC LIMIT 1', [$id, date('Y-m-t', strtotime($payDate))])->fetch();
         // no payslip saved yet: the month's gross from the pay data (wage + the BPJS the company pays that counts as income)
-        $b = bpjs(['tunjangan' => $upah - $p['gaji_pokok']] + $p, payroll_settings());
+        $b = bpjs(['gaji_pokok' => $upah, 'tunjangan' => 0] + $p, payroll_settings());
         $baseBruto = $base ? (int)$base['bruto'] : $upah + $b['jkk'] + $b['jkm'] + $b['kes_co'];
-        $tax = $amount ? max(0, ter_tax($p['ptkp'], $baseBruto + $amount) - ter_tax($p['ptkp'], $baseBruto)) : 0;
+        // daily workers: THR added to the month's pay, daily TER over the days of a month
+        $tax = !$amount ? 0 : ($daily ? max(0, pph21_daily($baseBruto + $amount, $dm)[0] - pph21_daily($baseBruto, $dm)[0])
+                                       : max(0, ter_tax($p['ptkp'], $baseBruto + $amount) - ter_tax($p['ptkp'], $baseBruto)));
         $note = !$start ? 'Tanggal mulai kerja kosong' : ($months < 1 ? 'Masa kerja < 1 bulan' : '');
-        if ($amount) $note = ($note ? "$note; " : '') . 'PPh: TER ' . ter_category($p['ptkp']) . ' atas gaji ' . ($base ? (substr($base['period_to'], 0, 7) === substr($payDate, 0, 7) ? 'bulan ini ' : 'terakhir (perkiraan) ') : 'dari data gaji (perkiraan, belum ada slip) ') . rupiah($baseBruto) . ' + THR';
+        if ($daily) $note = ($note ? "$note; " : '') . 'Harian lepas: upah rata-rata ' . ($base ? '12 bulan terakhir' : 'perkiraan upah harian × ' . $dm);
+        if ($amount) $note = ($note ? "$note; " : '') . 'PPh: TER ' . ($daily ? 'harian' : ter_category($p['ptkp'])) . ' atas gaji ' . ($base ? (substr($base['period_to'], 0, 7) === substr($payDate, 0, 7) ? 'bulan ini ' : 'terakhir (perkiraan) ') : 'dari data gaji (perkiraan, belum ada slip) ') . rupiah($baseBruto) . ' + THR';
         $out[$id] = ['pegawai_id' => $id, 'pin' => $e['pegawai_pin'], 'name' => $e['pegawai_nama'], 'start' => $start, 'months' => $months, 'upah' => $upah,
                      'rule_amount' => $rule, 'amount' => $amount, 'base_bruto' => $baseBruto, 'pph21' => $tax, 'netto' => $amount - $tax, 'note' => $note];
     }
@@ -300,6 +314,9 @@ function bpa1($pegawaiId, $year)
     $months = [];
     $ptkp = 'TK/0';
     $npwp = '';
+    // BPA1 is for permanent staff: daily workers' payslips (reported monthly as BP21) are left out
+    $slips = array_values(array_filter($slips, function ($s) { $d = json_decode($s['detail'], true); return !isset($d['pay_type']) || $d['pay_type'] !== 'daily'; }));
+    if (!$slips && !$thrs) return null;
     foreach ($slips as $s) {
         $d = json_decode($s['detail'], true);
         $months[] = (int)substr($s['period_to'], 5, 2);
