@@ -404,12 +404,14 @@ body.railmini .rail .cid { display: none; }
 /* Home calendar widget: national holidays red, cuti bersama orange */
 .mcal { width: 100%; border-collapse: collapse; table-layout: fixed; text-align: center; font-size: 13px; }
 .mcal th { padding: 4px 0; font-size: 11px; font-weight: 500; color: var(--muted); }
-.mcal td { height: 32px; padding: 0; border-radius: 6px; }
+.mcal td { padding: 2px 0; }
+.mcal td > span { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; }   /* the mark is a circle of equal space around the number */
 .mcal td.out { color: var(--faint); opacity: .45; }
 .mcal td.sun { color: var(--bad); }
-.mcal td.hol { background: var(--bad); color: #fff; font-weight: 600; }
-.mcal td.cb { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
-.mcal td.today { box-shadow: inset 0 0 0 2px var(--primary); }
+.mcal td.hol > span { background: var(--bad); color: #fff; font-weight: 600; }
+.mcal td.cb > span { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+.mcal td.today > span { box-shadow: inset 0 0 0 2px var(--primary); }
+.mcal td.today.hol > span { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--primary); }
 .widget h2 .side a { padding: 0 6px; }
 .widget h2 .side { white-space: nowrap; }
 .mcal-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
