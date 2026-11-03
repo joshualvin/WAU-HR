@@ -1,6 +1,7 @@
 <?php
 // Self-check for the payroll rules: php tests/payroll_test.php  (no database needed)
 require __DIR__ . '/../inc/payroll.php';
+require __DIR__ . '/../inc/govcal.php';
 $ok = 0;
 function check($label, $got, $want) { global $ok; if ($got !== $want) { fwrite(STDERR, "FAIL $label: got " . var_export($got, true) . ', want ' . var_export($want, true) . "\n"); exit(1); } $ok++; }
 
@@ -57,4 +58,19 @@ $thrTax = ter_tax('TK/0', 16000000) - ter_tax('TK/0', 8000000);
 check('thr tax', $thrTax, 1000000);
 check('salary tax with thr', pph21(['ptkp' => 'TK/0'], 8000000, 0, '2027-03-20', 1, ['month' => [8000000, $thrTax], 'year' => [8000000, $thrTax]])[0], 120000);
 check('salary tax without thr', pph21(['ptkp' => 'TK/0'], 8000000, 0, '2027-03-20', 1, ['month' => [0, 0], 'year' => [0, 0]])[0], 120000);
+// THR pay date: H-7, back to a working day when that is a Sunday or a holiday
+check('pay H-7', thr_pay_date('2027-03-10'), '2027-03-03');                       // Wednesday
+check('pay sunday', thr_pay_date('2026-03-22'), '2026-03-14');                    // H-7 = Sunday 15 March -> Saturday
+check('pay holiday', thr_pay_date('2027-03-10', ['2027-03-03', '2027-03-02']), '2027-03-01');
+check('skb 2027', lebaran_official()[2027], ['2027-03-10', 1448, 'skb']);
+// Government calendar: day counts as published, every date valid, weekday checks, and the Idul Fitri date agrees with THR
+foreach ([2026 => [17, 8], 2027 => [18, 8]] as $y => $want) {
+    $g = gov_holidays($y);
+    check("libur $y", [count(array_filter($g, function ($x) { return $x[2] === 1; })), count(array_filter($g, function ($x) { return $x[2] === 2; }))], $want);
+    check("dates $y unique", count(array_unique(array_column($g, 0))), count($g));
+    $fitri = array_values(array_filter($g, function ($x) { return $x[2] === 1 && strpos($x[1], 'Idul Fitri') === 0; }));
+    check("fitri $y", $fitri[0][0], lebaran_official()[$y][0]);
+}
+check('2027-03-10 is Wednesday', date('w', strtotime('2027-03-10')), '3');
+check('2026-12-25 is Friday', date('w', strtotime('2026-12-25')), '5');
 echo "payroll_test: $ok checks passed\n";

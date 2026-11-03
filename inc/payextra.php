@@ -160,6 +160,53 @@ function refresh_loan_status()
 
 // ---------- THR ----------
 
+/**
+ * First day of Idul Fitri per year: the government's date (SKB 3 Menteri on libur nasional, 'skb') where one has been
+ * issued, otherwise the astronomical estimate ('est'). [year => [date, hijri year, source]]. Add next year's SKB date
+ * here when it is published (usually September).
+ */
+function lebaran_official()
+{
+    return [2025 => ['2025-03-31', 1446, 'skb'], 2026 => ['2026-03-21', 1447, 'skb'], 2027 => ['2027-03-10', 1448, 'skb'],
+            2028 => ['2028-02-27', 1449, 'est'], 2029 => ['2029-02-15', 1450, 'est'], 2030 => ['2030-02-05', 1451, 'est']];
+}
+
+/**
+ * Idul Fitri of $year: the company's own holiday calendar (Fingerspot `libur`, an entry named Idul Fitri / Lebaran that
+ * is not cuti bersama) wins over lebaran_official(). Returns [date, hijri year or null, source label] or null.
+ */
+function lebaran_date($year)
+{
+    $own = q("SELECT MIN(libur_tgl) FROM libur WHERE libur_tgl BETWEEN ? AND ? AND (libur_keterangan LIKE '%fitri%' OR libur_keterangan LIKE '%lebaran%')
+              AND libur_keterangan NOT LIKE '%cuti%' AND (libur_status IS NULL OR libur_status <> 2)", ["$year-01-01", "$year-12-31"])->fetchColumn();
+    $off = lebaran_official();
+    $hijri = isset($off[$year]) ? $off[$year][1] : null;
+    if ($own) return [$own, $hijri, 'kalender libur perusahaan'];
+    if (!isset($off[$year])) return null;
+    return [$off[$year][0], $hijri, $off[$year][2] === 'skb' ? 'SKB 3 Menteri' : 'perkiraan (SKB belum terbit)'];
+}
+
+/** THR pay date: H-7 (the latest allowed), moved back to a working day when it is a Sunday or in $holidays (Y-m-d list). */
+function thr_pay_date($holiday, $holidays = [])
+{
+    $d = date('Y-m-d', strtotime($holiday . ' -7 days'));
+    while (date('w', strtotime($d)) === '0' || in_array($d, $holidays, true)) $d = date('Y-m-d', strtotime($d . ' -1 day'));
+    return $d;
+}
+
+/** The next Idul Fitri from $today and the ones after it: [[year, date, hijri, source, pay date], ...]. */
+function lebaran_choices($today, $count = 3)
+{
+    $out = [];
+    for ($y = (int)substr($today, 0, 4); $y <= (int)substr($today, 0, 4) + 5 && count($out) < $count; $y++) {
+        $l = lebaran_date($y);
+        if (!$l || $l[0] < $today) continue;
+        $hol = q('SELECT libur_tgl FROM libur WHERE libur_tgl BETWEEN ? AND ?', [date('Y-m-d', strtotime($l[0] . ' -30 days')), $l[0]])->fetchAll(PDO::FETCH_COLUMN);
+        $out[] = [$y, $l[0], $l[1], $l[2], thr_pay_date($l[0], $hol)];
+    }
+    return $out;
+}
+
 /** Full months of service from $start to $on (the holiday). */
 function service_months($start, $on)
 {

@@ -427,11 +427,17 @@ elseif ($p === 'thr'):
       <td class="num"><?= (int)$r['n'] ?></td><td class="num"><?= rupiah($r['total']) ?></td><td class="num"><?= rupiah($r['tax']) ?></td>
       <td><span class="pill <?= $r['published'] ? 'ok' : 'grey' ?>"><?= $r['published'] ? 'Diterbitkan' : 'Draf' ?></span></td><td class="actions"><a class="btn small" href="payroll.php?p=thr&id=<?= (int)$r['id'] ?>">Buka</a></td></tr><?php endforeach; ?>
     </tbody></table></div><?php if (!$runs): ?><div class="empty"><strong>Belum ada THR</strong>Buat perhitungan THR di bawah.</div><?php endif; ?></div>
+  <?php $choices = lebaran_choices(date('Y-m-d')); $c0 = $choices ? $choices[0] : null;
+        $label = function ($c) { return 'THR Idul Fitri ' . $c[0] . ($c[2] ? ' (' . $c[2] . ' H)' : ''); }; ?>
   <form method="post" class="section" style="margin-top:16px"><?= $csrf ?><input type="hidden" name="action" value="thr_create">
     <h2>Hitung THR</h2>
-    <label class="field"><span>Nama</span><input type="text" name="name" required value="THR Idul Fitri <?= date('Y') + ((int)date('n') > 4 ? 1 : 0) ?>"></label>
-    <div class="row2"><label class="field"><span>Tanggal hari raya</span><input type="date" name="holiday" required><small>Masa kerja dihitung sampai tanggal ini.</small></label>
-      <label class="field"><span>Tanggal dibayar</span><input type="date" name="pay_date" required><small>Paling lambat H-7. Menentukan masa pajak PPh 21.</small></label></div>
+    <?php if ($choices): ?><label class="field"><span>Lebaran</span><select id="lebaran" onchange="var o=this.options[this.selectedIndex];this.form.name.value=o.dataset.name;this.form.holiday.value=o.value;this.form.pay_date.value=o.dataset.pay;document.getElementById('lebsrc').textContent=o.dataset.src">
+      <?php foreach ($choices as $c): ?><option value="<?= h($c[1]) ?>" data-name="<?= h($label($c)) ?>" data-pay="<?= h($c[4]) ?>" data-src="Sumber tanggal: <?= h($c[3]) ?>"><?= h(fmt_date($c[1])) ?> · <?= h($label($c)) ?></option><?php endforeach; ?>
+    </select><small id="lebsrc">Sumber tanggal: <?= h($c0[3]) ?></small></label><?php endif; ?>
+    <label class="field"><span>Nama</span><input type="text" name="name" required value="<?= h($c0 ? $label($c0) : 'THR Idul Fitri ' . date('Y')) ?>"></label>
+    <div class="row2"><label class="field"><span>Tanggal hari raya</span><input type="date" name="holiday" required value="<?= h($c0 ? $c0[1] : '') ?>"
+        onchange="var d=new Date(this.value+'T00:00:00');if(!isNaN(d)){d.setDate(d.getDate()-7);if(d.getDay()===0)d.setDate(d.getDate()-1);this.form.pay_date.value=d.toISOString().slice(0,10)}"><small>Masa kerja dihitung sampai tanggal ini.</small></label>
+      <label class="field"><span>Tanggal dibayar</span><input type="date" name="pay_date" required value="<?= h($c0 ? $c0[4] : '') ?>"><small>Diisi H-7 (paling lambat), mundur ke hari kerja bila Minggu atau libur. Boleh lebih awal. Menentukan masa pajak PPh 21.</small></label></div>
     <small class="muted">Permenaker 6/2016: masa kerja 12 bulan atau lebih = 1 bulan upah (gaji pokok + tunjangan tetap); 1–11 bulan = masa kerja / 12 × upah; di bawah 1 bulan tidak mendapat THR.</small>
     <div class="formfoot"><button class="btn primary">Hitung</button></div></form>
   <?php endif; ?>
