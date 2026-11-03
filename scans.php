@@ -40,6 +40,7 @@ if (!valid_date($from)) $from = date('Y-m-d', strtotime('-6 days'));
 if (!valid_date($to)) $to = date('Y-m-d');
 $pid = get('pegawai_id');
 $source = get('source');
+$verify = get('verify');
 $page = max(1, (int)get('page', 1));
 $per = 100;
 
@@ -51,6 +52,10 @@ if ($pid !== '') {
 }
 if ($source === 'manual') $where[] = "a.sn IN ('100','101','102','103','104','105')";
 if ($source === 'device') $where[] = "a.sn NOT IN ('100','101','102','103','104','105')";
+if ($verify !== '' && isset(verify_modes()[(int)$verify])) {
+    $where[] = "a.verifymode = ? AND a.sn NOT IN ('100','101','102','103','104','105')";
+    $params[] = (int)$verify;
+}
 $w = implode(' AND ', $where);
 $total = (int)q("SELECT COUNT(*) FROM att_log a WHERE $w", $params)->fetchColumn();
 $rows = q("SELECT a.*, p.pegawai_nama, d.device_name FROM att_log a
@@ -67,8 +72,8 @@ $f = [
     'note'  => post('note'),
 ];
 $back = $_SERVER['REQUEST_URI'];
-$qs = function ($extra) use ($from, $to, $pid, $source) {
-    return 'scans.php?' . http_build_query(array_merge(['from' => $from, 'to' => $to, 'pegawai_id' => $pid, 'source' => $source], $extra));
+$qs = function ($extra) use ($from, $to, $pid, $source, $verify) {
+    return 'scans.php?' . http_build_query(array_merge(['from' => $from, 'to' => $to, 'pegawai_id' => $pid, 'source' => $source, 'verify' => $verify], $extra));
 };
 
 page_header('Absensi', 'scans.php');
@@ -113,6 +118,7 @@ page_header('Absensi', 'scans.php');
     <label>s/d <input type="date" name="to" value="<?= h($to) ?>"></label>
     <label>Pegawai <?= employee_select('pegawai_id', $pid, true, false) ?></label>
     <label>Sumber <select name="source"><?= options(['device' => 'Mesin', 'manual' => 'Manual'], $source, 'Semua') ?></select></label>
+    <label>Verifikasi <select name="verify"><?= options(verify_modes(), $verify, 'Semua') ?></select></label>
     <button class="btn">Cari</button>
   </form>
 </div>
@@ -120,7 +126,7 @@ page_header('Absensi', 'scans.php');
 <div class="card">
   <p class="muted"><?= number_format($total) ?> scan</p>
   <div class="table-wrap"><table>
-    <tr><th>Tanggal</th><th>Jam</th><th>Pegawai</th><th>PIN</th><th>Sumber</th><th></th></tr>
+    <tr><th>Tanggal</th><th>Jam</th><th>Pegawai</th><th>PIN</th><th>Sumber</th><th>Verifikasi</th><th></th></tr>
     <?php foreach ($rows as $r): $manual = is_scan_type($r['sn']); ?>
       <tr>
         <td><?= h(fmt_date(substr($r['scan_date'], 0, 10))) ?></td>
@@ -128,6 +134,7 @@ page_header('Absensi', 'scans.php');
         <td><?= h($r['pegawai_nama'] ?: 'PIN tidak dikenal') ?></td>
         <td><?= h($r['pin']) ?></td>
         <td><?= $manual ? '<span class="tag">Manual · ' . h(scan_types()[(int)$r['sn']][0]) . '</span>' : h($r['device_name'] ?: $r['sn']) ?></td>
+        <td><?= h(verify_label($r['verifymode'], $r['sn'])) ?></td>
         <td>
           <?php if ($manual): ?>
             <form method="post" class="btn-form" onsubmit="return confirm('Hapus scan manual ini?')">

@@ -223,6 +223,20 @@ function is_scan_type($jenis)
     return isset(scan_types()[(int)$jenis]);
 }
 
+/** How a scan was verified, by the codes Fingerspot uses (att_log.verifymode). */
+function verify_modes()
+{
+    return [1 => 'Sidik jari', 2 => 'Password / PIN', 3 => 'Kartu', 4 => 'Wajah', 6 => 'Vein / telapak', 7 => 'QR code'];
+}
+
+/** Label of a scan's verification; manual scans and unset values show a dash, unknown codes "Kode N". */
+function verify_label($mode, $sn)
+{
+    if (is_scan_type($sn) || (int)$mode === 0) return '—';
+    $m = verify_modes();
+    return isset($m[(int)$mode]) ? $m[(int)$mode] : 'Kode ' . (int)$mode;
+}
+
 function employees($activeOnly = true)
 {
     $sql = 'SELECT pegawai_id, pegawai_pin, pegawai_nip, pegawai_nama, pegawai_status, tgl_mulai_kerja FROM pegawai';
