@@ -286,6 +286,21 @@ if ($m === 'home'):
         <?php foreach (array_slice($news, 0, 4) as $p): ?><div class="li"><span class="avatar"><?= h(initials($p['pegawai_nama'])) ?></span><div class="meta"><b><?= h($p['pegawai_nama']) ?></b><small>mulai <?= date('d-m-Y', strtotime($p['tgl_mulai_kerja'])) ?></small></div></div><?php endforeach; ?>
         <?php if (!$news): ?><div class="muted">Tidak ada.</div><?php endif; ?></div></div></div>
     </div>
+    <?php $mFirst = calendar_month(get('cal'), $today); $mLast = date('Y-m-t', strtotime($mFirst));
+          $mHol = []; foreach (q('SELECT libur_tgl, libur_keterangan, libur_status FROM libur WHERE libur_tgl BETWEEN ? AND ? ORDER BY libur_tgl', [$mFirst, $mLast]) as $r) $mHol[$r['libur_tgl']] = $r;
+          $mNames = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+          $mUp = q('SELECT libur_tgl, libur_keterangan, libur_status FROM libur WHERE libur_tgl >= ? ORDER BY libur_tgl LIMIT 6', [$today])->fetchAll(); ?>
+    <div class="grid4">
+      <div class="card widget"><div class="wbody"><h2>Kalender <span class="side"><a href="hr.php?cal=<?= h(date('Y-m', strtotime($mFirst . ' -1 month'))) ?>" aria-label="Bulan sebelumnya">‹</a> <?= $mNames[(int)date('n', strtotime($mFirst))] ?> <?= date('Y', strtotime($mFirst)) ?> <a href="hr.php?cal=<?= h(date('Y-m', strtotime($mFirst . ' +1 month'))) ?>" aria-label="Bulan berikutnya">›</a></span></h2>
+        <table class="mcal"><thead><tr><?php foreach (['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'] as $dn): ?><th><?= $dn ?></th><?php endforeach; ?></tr></thead><tbody>
+          <?php foreach (calendar_weeks($mFirst) as $week): ?><tr><?php foreach ($week as $i => $d): $in = $d >= $mFirst && $d <= $mLast; $hol = $in && isset($mHol[$d]) ? $mHol[$d] : null; ?>
+            <td class="<?= $in ? '' : 'out' ?><?= $d === $today ? ' today' : '' ?><?= $hol ? ($hol['libur_status'] == 1 ? ' hol' : ' cb') : '' ?><?= $i === 6 && $in ? ' sun' : '' ?>"<?= $hol ? ' title="' . h($hol['libur_keterangan']) . '"' : '' ?>><?= (int)date('j', strtotime($d)) ?></td>
+          <?php endforeach; ?></tr><?php endforeach; ?></tbody></table></div>
+        <div class="wfoot mcal-lg"><span><i style="background:var(--bad)"></i>libur nasional</span> <span><i style="background:var(--warn)"></i>cuti bersama</span> <a href="calendar.php?ym=<?= h(date('Y-m', strtotime($mFirst))) ?>">Kalender lengkap ›</a></div></div>
+      <div class="card widget"><div class="wbody"><h2>Hari libur berikutnya</h2><div class="list">
+        <?php foreach ($mUp as $u): $days = (int)round((strtotime($u['libur_tgl']) - strtotime($today)) / 86400); ?><div class="li"><div class="meta"><b style="color:<?= $u['libur_status'] == 1 ? 'var(--bad)' : 'var(--warn)' ?>"><?= h($u['libur_keterangan']) ?></b><small><?= h(fmt_date($u['libur_tgl'])) ?> · <?= $days === 0 ? 'hari ini' : $days . ' hari lagi' ?></small></div></div><?php endforeach; ?>
+        <?php if (!$mUp): ?><div class="muted">Belum ada hari libur. <a href="holidays.php">Isi dari kalender pemerintah</a>.</div><?php endif; ?></div></div></div>
+    </div>
     <?php $anns = current_announcements($today, 5); $taskCount = count($pending) + $otPend + $rbPend + count($profileReqs); ?>
     <div class="card tabcard">
       <div class="tabs" id="hometabs">
