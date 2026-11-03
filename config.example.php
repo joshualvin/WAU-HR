@@ -10,8 +10,8 @@ return [
     'timezone' => 'Asia/Jakarta',
     // A day with a single scan before this time counts as "check-out missing", after it as "check-in missing".
     'midday'   => '12:00',
-    // Token from the fingerspot.io developer portal, for Mesin → Download Fingerspot.io
-    'fingerspot_token' => '',
+    // API key from Fingerspot.io → Pengaturan → Pengaturan Umum → API SDK, for Mesin → Download Fingerspot.io
+    'fingerspot_api_key' => '',
     // Fingerspot Personnel's own MySQL (for Mesin → Sinkron dari Program)
     'sync_port' => 3309,
     'sync_db'   => 'fin_pro',

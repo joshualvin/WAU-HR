@@ -19,16 +19,19 @@ $error = '';
 $from = post('from', get('from', $defFrom));
 $to = post('to', get('to', date('Y-m-d')));
 $picked = isset($_POST['sn']) ? array_map('strval', (array)$_POST['sn']) : array_column($devices, 'sn');
+$gps = $_SERVER['REQUEST_METHOD'] === 'POST' ? (bool)post('gps') : true;
+$days = (int)((strtotime($to) - strtotime($from)) / 86400) + 1;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
-    if (!$hasToken) $error = 'Token fingerspot.io belum diisi di config.php.';
+    if (!$hasToken) $error = 'API key Fingerspot.io belum diisi di config.php.';
     elseif (!valid_date($from) || !valid_date($to) || $to < $from) $error = 'Isi rentang tanggal yang benar.';
     elseif ($from < $oldest) $error = 'fingerspot.io hanya menyimpan data 60 hari terakhir (mulai ' . fmt_date($oldest) . ').';
     elseif ($to > date('Y-m-d')) $error = 'Tanggal akhir tidak boleh setelah hari ini.';
-    elseif (!$picked) $error = 'Pilih minimal satu mesin.';
+    elseif (!$picked && !$gps) $error = 'Pilih minimal satu mesin atau scan GPS.';
+    elseif ($days * (count($picked) + ($gps ? 1 : 0)) > 100) $error = 'Fingerspot.io membatasi 100 request per hari: ' . $days . ' hari × ' . (count($picked) + ($gps ? 1 : 0)) . ' sumber terlalu banyak. Perpendek rentang tanggal.';
     else {
-        $results = cloud_download($from, $to, $picked);
+        $results = cloud_download($from, $to, $picked, $gps);
         $added = array_sum(array_column($results, 'added'));
         audit('cloud_download', "$from..$to: $added scan baru");
         $devices = cloud_devices();
@@ -38,8 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 page_header('Download Fingerspot.io', 'cloud.php');
 ?>
 <?php if (!$hasToken): ?>
-  <div class="flash err">Token belum diisi. Tambahkan baris <code>'fingerspot_token' => 'TOKEN_ANDA',</code> di <code>config.php</code> di server
-    (token dari portal developer.fingerspot.io), lalu muat ulang halaman ini.</div>
+  <div class="flash err">API key belum diisi. Tambahkan baris <code>'fingerspot_api_key' => 'API_KEY_ANDA',</code> di <code>config.php</code> di server
+    (Fingerspot.io → Pengaturan → Pengaturan Umum → API SDK → API Key), lalu muat ulang halaman ini.</div>
 <?php endif; ?>
 <?php if ($error): ?><div class="flash err"><?= h($error) ?></div><?php endif; ?>
 
@@ -60,12 +63,13 @@ page_header('Download Fingerspot.io', 'cloud.php');
         </tr>
       <?php endforeach; ?>
       <?php if (!$devices): ?><tr><td colspan="6" class="muted">Tidak ada mesin dengan Cloud ID.</td></tr><?php endif; ?>
+      <tr><td><input type="checkbox" name="gps" value="1" <?= $gps ? 'checked' : '' ?>></td><td><b>Scan GPS App FiO</b></td><td>FIO</td><td colspan="3" class="muted">Absen dari aplikasi FiO di HP, dengan lokasi (perlu AddOn "API SDK scan GPS App FiO"). Lihat di <a href="gps.php">Scan GPS</a>.</td></tr>
     </table></div>
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <label style="flex-direction:row;align-items:center;gap:4px">Tanggal <input type="date" name="from" value="<?= h($from) ?>" min="<?= $oldest ?>" max="<?= date('Y-m-d') ?>"></label>
       <label style="flex-direction:row;align-items:center;gap:4px">s/d <input type="date" name="to" value="<?= h($to) ?>" min="<?= $oldest ?>" max="<?= date('Y-m-d') ?>"></label>
       <button class="btn primary" <?= $hasToken && $devices ? '' : 'disabled' ?>>Download</button>
-      <span class="muted">Diambil per 2 hari (batas fingerspot.io), maksimal 60 hari ke belakang. Scan yang sudah ada tidak ditambah dua kali.</span>
+      <span class="muted">Tanggal = hari data <b>masuk</b> ke Fingerspot.io (scan bisa lebih lama). Satu request per sumber per hari, batas 100 request per hari. Scan yang sudah ada tidak ditambah dua kali.</span>
     </div>
   </form>
 </div>

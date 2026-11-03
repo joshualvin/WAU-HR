@@ -44,13 +44,11 @@ The app adds two tables of its own to the database: `web_user` (sign-ins) and `w
 - Automatic: Task Scheduler every 15 minutes, `C:\xampp\php\php.exe C:\xampp\htdocs\WAU-HR\ftm_cli.php 3` (last 3 days).
 - The FTM desktop program must save to the server's `ftm` database (its `user.fin`: host 192.168.20.102, port 3306); the page warns when FTM's newest scan is more than 3 days old.
 
-## Download from fingerspot.io
-1. Add the token from the fingerspot.io developer portal to `config.php`: `'fingerspot_token' => 'YOUR_TOKEN',`
-2. Mesin → Download Fingerspot.io: pick the dates and machines (those with a Cloud ID) and click Download.
-3. Optional, automatic like the program's download times: in Windows Task Scheduler create a task that runs
-   `C:\xampp\php\php.exe C:\xampp\htdocs\WAU-HR\cloud_cli.php 2` at the times you want (downloads the last 2 days).
-
-Scans are stored like the program stores cloud scans (sn = machine serial, att_id 0), so nothing is added twice.
+## Download from fingerspot.io (API SDK)
+- **Mesin → Download Fingerspot.io** (`cloud.php`) uses the Fingerspot.io **API SDK** (see the Quick Guide API SDK): `GET https://api.fingerspot.io/api/download/attendance_log/{Cloud ID}/{upload date}/6/date_time/asc/json/{auth}/{yyyyMMddHHmmss}` with `auth = MD5(Cloud ID + upload date + time + API key)`. Put the key in `config.php` as `fingerspot_api_key` (Fingerspot.io → Pengaturan → Pengaturan Umum → API SDK → API Key; the old name `fingerspot_token` still works). Each machine needs API SDK activated (Mesin Absensi → API SDK).
+- The date is the day scans **reached** Fingerspot.io (they can be older). One request per machine per day; Fingerspot.io allows 100 requests a day, so the page refuses ranges that would go over. Errors are shown with their meaning (IO_API_ERR_1–7).
+- **Scan GPS App FiO** (needs the AddOn "API SDK scan GPS App FiO"): attendance from the FiO phone app comes in as scans of machine `FIO` and with location, address and phone in `web_gps_scan`. **Mesin → Scan GPS (FiO)** (`gps.php`) lists them with a map link and checks them against **geofences** (offices / sites with a radius): inside shows the place and distance, outside is flagged.
+- Automatic: Task Scheduler `C:\xampp\php\php.exe C:\xampp\htdocs\WAU-HR\cloud_cli.php 2` (last 2 days, machines + GPS; add `nogps` to skip GPS). Mind the daily limit: (machines + 1) × days per run.
 
 ## HR Overview and Portal Pegawai
 - **HR Overview** (`hr.php`, HR button in the toolbar): who is in today, pending time-off requests (Setujui / Tolak), leave in the next 7 days, birthdays, employee list, and links back to the Fingerspot-style screens to enter attendance.
