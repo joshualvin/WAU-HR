@@ -35,12 +35,21 @@ function ensure_cloud_tables()
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
 }
 
-/** Machines that have a cloud ID. */
+/** Machines archived in WAU-HR (hidden from the machine list and the downloads, scans kept). */
+function ensure_device_archive()
+{
+    db()->exec("CREATE TABLE IF NOT EXISTS web_device_archive (
+        sn VARCHAR(40) NOT NULL PRIMARY KEY, archived_at DATETIME NOT NULL, archived_by VARCHAR(50) NOT NULL DEFAULT ''
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+}
+
+/** Machines that have a cloud ID (archived ones left out). */
 function cloud_devices()
 {
+    ensure_device_archive();
     return q("SELECT d.sn, d.device_name, d.cloud_id, d.last_download_web,
                      (SELECT MAX(scan_date) FROM att_log a WHERE a.sn = d.sn) last_scan
-              FROM device d WHERE d.cloud_id <> '' ORDER BY d.device_name")->fetchAll();
+              FROM device d WHERE d.cloud_id <> '' AND d.sn NOT IN (SELECT sn FROM web_device_archive) ORDER BY d.device_name")->fetchAll();
 }
 
 /** The request URL for one machine (or '0-KEY' for FiO GPS scans) and upload day; $now = YmdHis. */
