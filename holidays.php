@@ -85,6 +85,7 @@ settings_header('Hari Libur ' . $year, 'settings.php');
     <?php else: ?>
       <p class="muted"><?= count($missing) - $missingCuti ?> libur nasional dan <?= $missingCuti ?> cuti bersama belum ada di kalender:</p>
       <ul class="muted" style="margin:0 0 8px;padding-left:18px;font-size:12px"><?php foreach ($missing as $g): ?><li><?= h(fmt_date($g[0])) ?> · <?= h($g[1]) ?></li><?php endforeach; ?></ul>
+      <?php if (!gov_official($year)): ?><p class="muted">SKB <?= $year ?> belum ada di aplikasi: hanya hari libur bertanggal tetap (Tahun Baru, Buruh, Pancasila, 17 Agustus, Natal). Libur keagamaan lain tambahkan manual.</p><?php endif; ?>
       <form method="post" class="stack"><?= csrf_field() ?><input type="hidden" name="action" value="gov_fill"><input type="hidden" name="year" value="<?= $year ?>">
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="cuti" value="1" checked> Termasuk cuti bersama</label>
         <button class="btn primary">Tambahkan dari kalender pemerintah</button></form>

@@ -31,5 +31,14 @@ function gov_holidays($year)
             ['2027-12-25', 'Kelahiran Yesus Kristus', 1], ['2027-12-26', 'Isra Mikraj Nabi Muhammad SAW', 1],
         ],
     ];
-    return isset($c[$year]) ? $c[$year] : [];
+    if (isset($c[$year])) return $c[$year];
+    // shortcut: years without an SKB here only get the fixed-date holidays; the moving ones (Idul Fitri, Imlek, Waisak...) need the SKB, add the year above when it is published
+    $y = (int)$year;
+    return $y < 2000 ? [] : [["$y-01-01", "Tahun Baru $y Masehi", 1], ["$y-05-01", 'Hari Buruh Internasional', 1], ["$y-06-01", 'Hari Lahir Pancasila', 1],
+        ["$y-08-17", 'Proklamasi Kemerdekaan', 1], ["$y-12-25", 'Kelahiran Yesus Kristus', 1]];
+}
+
+function gov_official($year)
+{
+    return in_array((int)$year, [2026, 2027], true);
 }
