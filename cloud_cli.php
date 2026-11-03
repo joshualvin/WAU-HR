@@ -2,11 +2,11 @@
 // Automatic download for Windows Task Scheduler (see the schtasks line in README / the chat):
 //   C:\xampp\php\php.exe C:\xampp\htdocs\WAU-HR\cloud_cli.php [days]
 // Downloads the scans that reached Fingerspot.io for every machine with a Cloud ID, through the free Fingerspot Personnel
-// API (key in config.php). Without [days] it starts the day before each machine's last clean download (so a missed or failed
-// run is caught up by the next one), at most 60 days back; with [days] it covers exactly the last [days] days.
+// API (key in config.php). Without [days] it starts at each machine's last covered day: normally today, so a run is one burst
+// of requests; after a night off or a failed run the next run catches up the missed days (a minute per day), at most 60 days
+// back. With [days] it covers exactly the last [days] days.
 // Fingerspot allows one burst of requests a minute for the whole account: all machines are asked together, then the next day
-// waits a minute. Scans already stored are not re-added. Typical schedule: "cloud_cli.php 1" every 5 minutes (today only: one
-// round, takes seconds) and a plain "cloud_cli.php" once a day before the first run (yesterday and any gap).
+// waits a minute. Scans already stored are not re-added. Schedule: plain "cloud_cli.php" every 5 minutes; no second task needed.
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/cloud.php';
@@ -24,7 +24,7 @@ if (isset($argv[1])) {
 } else {
     $from = $to;
     foreach (cloud_devices() as $d) {
-        $last = $d['last_download_web'] ? date('Y-m-d', strtotime($d['last_download_web'] . ' -1 day')) : date('Y-m-d', strtotime('-2 days'));
+        $last = $d['last_download_web'] ? $d['last_download_web'] : date('Y-m-d', strtotime('-2 days'));
         if ($last < $from) $from = $last;
     }
     $from = max($from, $oldest);
