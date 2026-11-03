@@ -14,7 +14,9 @@ function erp_sales($from, $to)
     global $CONFIG;
     $url = rtrim(!empty($CONFIG['erp_url']) ? $CONFIG['erp_url'] : 'http://127.0.0.1/wau-erp', '/') . '/api/hr.php?' . http_build_query(['action' => 'sales', 'from' => $from, 'to' => $to]);
     $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $CONFIG['erp_token'], 'Accept: application/json'],
+    $token = trim($CONFIG['erp_token']);
+    // X-HR-Token too: XAMPP's Apache often drops Authorization before PHP sees it
+    curl_setopt_array($ch, [CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'X-HR-Token: ' . $token, 'Accept: application/json'],
                             CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_TIMEOUT => 60]);
     $res = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
