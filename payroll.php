@@ -6,9 +6,11 @@ require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/erp.php';
+require __DIR__ . '/inc/approval.php';
 $me = require_login('admin');
 ensure_web_tables();
 ensure_payroll_tables();
+ensure_approval_tables();
 
 $p = get('p', 'run');
 list($defFrom, $defTo) = current_period();
@@ -368,7 +370,7 @@ elseif ($p === 'reimburse'):
         <td class="num"><b><?= rupiah($r['jumlah']) ?></b></td><td><?= h($r['keterangan']) ?></td>
         <td><?= $r['file'] ? '<a href="receipt.php?id=' . (int)$r['id'] . '" target="_blank">Lihat</a>' : '—' ?></td><td><?= claim_badge($r['status']) ?></td>
         <td class="muted"><?= $r['paid_period_to'] ? 'gaji s/d ' . h(date('d-m-Y', strtotime($r['paid_period_to']))) : ($r['status'] === CLAIM_APPROVED ? 'gaji berikutnya' : '') ?></td>
-        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): foreach (['rb_approve' => ['primary', 'Setujui'], 'rb_reject' => ['outline', 'Tolak']] as $act => $b): ?>
+        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): echo supervisor_badge('reimburse', $r['id'], $r['pegawai_id']) . ' '; foreach (['rb_approve' => ['primary', 'Setujui'], 'rb_reject' => ['outline', 'Tolak']] as $act => $b): ?>
           <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="<?= $act ?>"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>">
             <button class="btn small <?= $b[0] ?>"><?= $b[1] ?></button></form>
         <?php endforeach; endif; ?></td></tr>
@@ -433,6 +435,7 @@ elseif ($p === 'loans'):
         <td class="num"><?= rupiah($l['jumlah']) ?></td><td class="num"><?= rupiah($l['cicilan']) ?> <span class="muted">(<?= (int)ceil($l['jumlah'] / max(1, $l['cicilan'])) ?>×)</span></td>
         <td class="num"><?= rupiah($l['repaid']) ?></td><td class="num"><b><?= rupiah($l['jumlah'] - $l['repaid']) ?></b></td><td><?= h($l['keterangan']) ?></td><td><?= loan_badge($l['status']) ?></td>
         <td class="actions" style="white-space:nowrap"><?php if ($l['status'] === LOAN_PENDING): ?>
+          <?= supervisor_badge('loan', $l['id'], $l['pegawai_id']) ?>
           <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="loan_approve"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
             <input type="hidden" name="tgl" value="<?= date('Y-m-d') ?>"><input type="text" name="jumlah" value="<?= h(number_format($l['jumlah'], 0, ',', '.')) ?>" style="width:110px" title="Jumlah disetujui">
             <input type="text" name="cicilan" value="<?= h(number_format($l['cicilan'], 0, ',', '.')) ?>" style="width:100px" title="Cicilan per periode"><button class="btn small primary">Setujui</button></form>

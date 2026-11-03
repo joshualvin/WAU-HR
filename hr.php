@@ -10,6 +10,7 @@ require_once __DIR__ . '/inc/employment.php';
 require __DIR__ . '/inc/discipline.php';
 require __DIR__ . '/inc/people.php';
 require __DIR__ . '/inc/company.php';
+require __DIR__ . '/inc/approval.php';
 $me = require_login();
 ensure_web_tables();
 ensure_payroll_tables();
@@ -18,6 +19,7 @@ ensure_employment_tables();
 ensure_discipline_tables();
 ensure_people_tables();
 ensure_company_tables();
+ensure_approval_tables();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -152,7 +154,8 @@ function who($p, $link = true)
 
 function decide_buttons($r, $csrf, $back)
 {
-    $out = '';
+    $out = supervisor_badge('izin', izin_ref($r), $r['pegawai_id']);
+    $out .= $out ? ' ' : '';
     foreach (['approve' => ['primary', 'Setujui'], 'reject' => ['outline', 'Tolak']] as $act => $b) {
         $out .= '<form method="post" class="inline">' . $csrf . '<input type="hidden" name="action" value="' . $act . '"><input type="hidden" name="back" value="' . $back . '">'
               . izin_key_fields($r) . '<button class="btn small ' . $b[0] . '">' . $b[1] . '</button></form> ';
@@ -566,7 +569,7 @@ elseif ($m === 'swaps'):
       <tr><td><?= h(fmt_date($r['tgl'])) ?></td><td><b><?= h($r['na']) ?></b></td><td><?= h($r['nb']) ?></td>
         <td><?= h(scheduled_hours_for($r['pegawai_id'], $r['tgl'])[0]['jk_name'] ?? 'Libur') ?> ⇄ <?= h(scheduled_hours_for($r['with_id'], $r['tgl'])[0]['jk_name'] ?? 'Libur') ?></td>
         <td><?= h($r['alasan']) ?></td><td><?= claim_badge($r['status']) ?></td>
-        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): foreach (['swap_approve' => ['primary', 'Setujui'], 'swap_reject' => ['outline', 'Tolak']] as $act => $b): ?>
+        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): echo supervisor_badge('swap', $r['id'], $r['pegawai_id']) . ' '; foreach (['swap_approve' => ['primary', 'Setujui'], 'swap_reject' => ['outline', 'Tolak']] as $act => $b): ?>
           <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="<?= $act ?>"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>">
             <button class="btn small <?= $b[0] ?>"><?= $b[1] ?></button></form>
         <?php endforeach; endif; ?></td></tr>
@@ -612,7 +615,7 @@ elseif ($m === 'overtime'):
         <td><?= fmt_minutes($r['minutes']) ?></td>
         <td class="muted"><?= $a ? h(trim(($a['first'] ?: '--:--') . ' – ' . ($a['last'] ?: '--:--'))) . ($a['ot'] ? ' · lembur ' . fmt_minutes($a['ot']) : '') : '—' ?></td>
         <td><?= h($r['alasan']) ?></td><td><?= claim_badge($r['status']) ?></td>
-        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): foreach (['ot_approve' => ['primary', 'Setujui'], 'ot_reject' => ['outline', 'Tolak']] as $act => $b): ?>
+        <td class="actions"><?php if ($r['status'] === CLAIM_PENDING): echo supervisor_badge('overtime', $r['id'], $r['pegawai_id']) . ' '; foreach (['ot_approve' => ['primary', 'Setujui'], 'ot_reject' => ['outline', 'Tolak']] as $act => $b): ?>
           <form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="<?= $act ?>"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>">
             <button class="btn small <?= $b[0] ?>"><?= $b[1] ?></button></form>
         <?php endforeach; endif; ?></td></tr>

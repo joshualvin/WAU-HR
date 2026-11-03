@@ -99,6 +99,9 @@ Rates and TER brackets are in `inc/payroll.php`; `php tests/payroll_test.php` ch
 - **Struktur organisasi**: each employee's direct supervisor (`web_emp_profile.atasan_id`), shown as a chart; loops are refused. The supervisor is also the first to approve requests.
 - **Aset**: laptops, phones, vehicles, uniforms, keys… with code, serial and condition, handed to and returned by employees with a history; shown on the profile (Pekerjaan) and in the portal, so offboarding can check what must come back.
 
+## Supervisor approval
+- Employees with a supervisor (Perusahaan → Struktur organisasi) have their leave, overtime, reimbursement, kasbon and shift-swap requests approved by that supervisor first, in **Portal Pegawai → Tim saya** (shown to supervisors only, with their team's attendance today). A supervisor's rejection rejects the request; an approval is shown to HR ("✓ atasan …" / "menunggu atasan …" next to the HR buttons), who decides last. Employees without a supervisor go straight to HR. Decisions are in `web_approval`.
+
 ## Employment status
 - **HR → Karyawan → profile → Pekerjaan**: the status kepegawaian with its history: Karyawan tetap (PKWTT, optional probation end), Kontrak (PKWT, contract number, start and end), Harian lepas or Magang. A renewal or change adds a row; the latest one is current. Checks follow PP 35/2021: a contract chain is at most 5 years including extensions, probation only for permanent staff and at most 3 months.
 - The employee list shows each status with its end date (amber within 30 days, red when it has passed) and can be filtered by status. Employees without a status can be filled in at once from their start date.

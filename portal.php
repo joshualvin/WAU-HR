@@ -7,6 +7,7 @@ require __DIR__ . '/inc/payroll.php';
 require __DIR__ . '/inc/discipline.php';
 require __DIR__ . '/inc/people.php';
 require __DIR__ . '/inc/company.php';
+require __DIR__ . '/inc/approval.php';
 require __DIR__ . '/inc/talent.php';
 require __DIR__ . '/inc/shifts.php';
 
@@ -136,6 +137,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $page = 'reimburse';
+    } elseif ($action === 'team_decide') {
+        ensure_approval_tables();
+        $ok = supervisor_decide($me['id'], $me['name'], post('kind'), post('ref'), post('decision') === 'approve', post('note'));
+        if ($ok) audit('supervisor_' . post('decision'), $me['name'] . ' ' . post('kind') . ' ' . post('ref'));
+        flash($ok ? (post('decision') === 'approve' ? 'Disetujui; diteruskan ke HR untuk keputusan akhir.' : 'Pengajuan ditolak.') : 'Pengajuan ini tidak bisa Anda putuskan (sudah diputuskan atau bukan bawahan Anda).', $ok ? 'ok' : 'err');
+        redirect('portal.php?p=team');
     } elseif ($action === 'profile_request') {
         ensure_people_tables();
         $chg = profile_changes(get_profile($me['id']), clean_profile($_POST));
@@ -263,6 +270,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 list($pFrom, $pTo) = current_period();
 $tabs = ['home' => 'Beranda', 'shift' => 'Jadwal', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'kasbon' => 'Kasbon', 'slip' => 'Slip Gaji', 'review' => 'Penilaian', 'profile' => 'Profil'];
 ensure_discipline_tables();
+// Tim saya for supervisors (someone has them as direct supervisor)
+ensure_approval_tables(); ensure_people_tables();
+$isBoss = (bool)q('SELECT COUNT(*) FROM web_emp_profile x JOIN pegawai p ON p.pegawai_id = x.pegawai_id WHERE x.atasan_id = ? AND p.pegawai_status = 1', [$me['id']])->fetchColumn();
+if ($isBoss) $tabs = ['home' => $tabs['home'], 'team' => 'Tim saya'] + $tabs;
 // the Peringatan tab only for employees who have received one
 if (q('SELECT COUNT(*) FROM web_warning WHERE pegawai_id = ?', [$me['id']])->fetchColumn()) $tabs = array_slice($tabs, 0, -1, true) + ['warnings' => 'Peringatan'] + array_slice($tabs, -1, 1, true);
 if (!isset($tabs[$page])) $page = 'home';
@@ -514,6 +525,24 @@ if ($page === 'home'):
     </div>
   <?php endforeach; ?>
   <?php if (!$reviews): ?><div class="p-list"><div class="p-item muted">Belum ada penilaian kinerja.</div></div><?php endif; ?>
+
+<?php elseif ($page === 'team' && $isBoss):
+    $items = team_pending($me['id']);
+    $teamIds = q('SELECT x.pegawai_id FROM web_emp_profile x JOIN pegawai p ON p.pegawai_id = x.pegawai_id WHERE x.atasan_id = ? AND p.pegawai_status = 1', [$me['id']])->fetchAll(PDO::FETCH_COLUMN);
+    $todayRows = [];
+    foreach ($teamIds as $tid) foreach (daily_attendance(date('Y-m-d'), date('Y-m-d'), $tid) as $r) $todayRows[] = $r; ?>
+  <div class="p-card"><h2>Perlu persetujuan Anda (<?= count($items) ?>)</h2>
+    <?php foreach ($items as $it): ?>
+      <div class="p-item" style="padding:10px 0;flex-wrap:wrap"><div class="p-main"><b><?= h($it[2]) ?></b> · <?= h($it[3]) ?><div class="muted"><?= h($it[4]) ?></div></div>
+        <form method="post" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><?= csrf_field() ?><input type="hidden" name="action" value="team_decide"><input type="hidden" name="kind" value="<?= h($it[0]) ?>"><input type="hidden" name="ref" value="<?= h($it[1]) ?>">
+          <input name="note" placeholder="Catatan (opsional)" style="width:160px;height:28px"><button class="p-btn small primary" name="decision" value="approve">Setujui</button>
+          <button class="p-btn small" name="decision" value="reject" onclick="return confirm('Tolak pengajuan ini?')">Tolak</button></form></div>
+    <?php endforeach; ?>
+    <?php if (!$items): ?><p class="muted">Tidak ada pengajuan yang menunggu Anda.</p><?php endif; ?>
+    <p class="muted">Persetujuan Anda diteruskan ke HR untuk keputusan akhir; penolakan langsung menolak pengajuan.</p></div>
+  <h2>Kehadiran tim hari ini</h2>
+  <div class="p-list"><?php foreach ($todayRows as $r): ?><div class="p-item"><div class="p-main"><b><?= h($r['name']) ?></b><div class="muted"><?= h($r['first'] ?: '--:--') ?> – <?= h($r['last'] ?: '--:--') ?><?= $r['leave'] ? ' · ' . h(implode(', ', $r['leave'])) : '' ?></div></div><?= status_badge($r['status']) ?></div><?php endforeach; ?>
+    <?php if (!$todayRows): ?><div class="p-item muted">Tidak ada data.</div><?php endif; ?></div>
 
 <?php elseif ($page === 'warnings'):
     $warns = q('SELECT * FROM web_warning WHERE pegawai_id = ? ORDER BY issued DESC, id DESC', [$me['id']])->fetchAll(); ?>
