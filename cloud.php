@@ -14,7 +14,7 @@ if ($me['role'] === 'admin' && get('probe') !== '') {
 
 if ($me['role'] === 'admin' && get('diag') !== '') {
     header('Content-Type: text/plain; charset=utf-8');
-    echo implode("\n", cloud_ds_diag()) . "\n";
+    echo implode("\n", get('diag') === 'att' ? cloud_ds_diag_att() : cloud_ds_diag()) . "\n";
     exit;
 }
 

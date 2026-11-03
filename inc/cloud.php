@@ -115,9 +115,9 @@ function cloud_ds_token($cloudId, $date, $key, $now)
 }
 
 /** The request URL for one machine and day; $now = YmdHis. */
-function cloud_ds_url($cloudId, $date, $key, $now)
+function cloud_ds_url($cloudId, $date, $key, $now, $tail = '3/0/0')
 {
-    return cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/" . cloud_ds_token($cloudId, $date, $key, $now) . '/3/0/0';
+    return cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/" . cloud_ds_token($cloudId, $date, $key, $now) . '/' . $tail;
 }
 
 /** Diagnostic: the reply of api-ds to each plausible layout x token recipe, [label => message]. A reply that is neither 404 ({"message":""}) nor Access Denied is a hit. */
@@ -159,6 +159,27 @@ function cloud_ds_diag()
             list($rows, $e) = cloud_get_attlog_ds($cid, $day);
             $max = $rows ? max(array_column($rows, 'scan_date')) : '';
             $lines[] = str_pad("attendance_log $day", 26) . ($e ? $e : count($rows) . ' scans' . ($max ? ", latest $max" : ''));
+        }
+    }
+    return $lines;
+}
+
+/** Diagnostic for ?diag=att: attendance_log scan counts per machine, day and trailing path values (no key, no names). */
+function cloud_ds_diag_att()
+{
+    $lines = [];
+    $days = [date('Y-m-d', strtotime('-1 day')), date('Y-m-d'), date('Y-m-d', strtotime('+1 day'))];
+    foreach (cloud_devices() as $d) {
+        if (!preg_match('/Kantor|AF2/i', $d['device_name'])) continue;
+        $cid = strtoupper(trim($d['cloud_id']));
+        $lines[] = "== {$d['device_name']} ($cid)";
+        foreach (['3/0/0', '3/0/1', '3/1/0', '1/0/0', '0/0/0', '3/0/' . $d['sn']] as $tail) {
+            $row = [];
+            foreach ($days as $day) {
+                list($rows, $e) = cloud_get_attlog_ds($cid, $day, $tail);
+                $row[] = "$day=" . ($e ? 'ERR' : count($rows) . ($rows ? ' (latest ' . substr(max(array_column($rows, 'scan_date')), 5, 11) . ')' : ''));
+            }
+            $lines[] = str_pad(str_replace($d['sn'], 'SN', $tail), 8) . implode('  ', $row);
         }
     }
     return $lines;
@@ -209,7 +230,8 @@ function cloud_ds_get($url)
 /** Days from $from to $to (Y-m-d) on which the cloud received scans of a device: date_list/{key}/{cloud}/{from}/{to}. */
 function cloud_get_dates_ds($cloudId, $from, $to)
 {
-    list($json, $err) = cloud_ds_get(cloud_ds_origin() . '/api/desktop/date_list/' . rawurlencode(cloud_token()) . '/' . rawurlencode($cloudId) . "/$from/$to");
+    $end = date('Y-m-d', strtotime($to . ' +1 day'));   // the end day is exclusive on the server
+    list($json, $err) = cloud_ds_get(cloud_ds_origin() . '/api/desktop/date_list/' . rawurlencode(cloud_token()) . '/' . rawurlencode($cloudId) . "/$from/$end");
     if ($err) return [[], $err];
     $dates = [];
     foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if (isset($r['date'])) $dates[] = substr((string)$r['date'], 0, 10);
@@ -217,9 +239,9 @@ function cloud_get_dates_ds($cloudId, $from, $to)
 }
 
 /** One desktop-API attendance_log call for a device and upload date (Y-m-d). Returns [rows, error]. */
-function cloud_get_attlog_ds($cloudId, $date)
+function cloud_get_attlog_ds($cloudId, $date, $tail = '3/0/0')
 {
-    list($json, $err) = cloud_ds_get(cloud_ds_url($cloudId, $date, cloud_token(), date('YmdHis')));
+    list($json, $err) = cloud_ds_get(cloud_ds_url($cloudId, $date, cloud_token(), date('YmdHis'), $tail));
     if ($err) return [[], $err];
     $rows = [];
     foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
