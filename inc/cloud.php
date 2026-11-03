@@ -94,7 +94,8 @@ function cloud_download($from, $to, $sns = [], $gps = false)
     $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, 0, ?)');
     $gpsIns = db()->prepare('REPLACE INTO web_gps_scan (pin, scan_date, type_id, type, lat, lng, address, phone, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $targets = [];
-    foreach (cloud_devices() as $d) if (!$sns || in_array($d['sn'], $sns, true)) $targets[$d['sn']] = [$d['cloud_id'], $d['device_name']];
+    // Cloud IDs are upper-case hex on Fingerspot.io; the auth code is case-sensitive
+    foreach (cloud_devices() as $d) if (!$sns || in_array($d['sn'], $sns, true)) $targets[$d['sn']] = [strtoupper(trim($d['cloud_id'])), $d['device_name']];
     if ($gps) $targets[CLOUD_GPS_SN] = ['0-' . cloud_token(), 'Scan GPS App FiO'];
     $out = [];
     foreach ($targets as $sn => $t) {
