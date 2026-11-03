@@ -86,7 +86,7 @@ page_header('Download Fingerspot.io', 'cloud.php');
       <label style="flex-direction:row;align-items:center;gap:4px">Tanggal <input type="date" name="from" value="<?= h($from) ?>" min="<?= $oldest ?>" max="<?= date('Y-m-d') ?>"></label>
       <label style="flex-direction:row;align-items:center;gap:4px">s/d <input type="date" name="to" value="<?= h($to) ?>" min="<?= $oldest ?>" max="<?= date('Y-m-d') ?>"></label>
       <button class="btn primary" <?= $hasToken && $devices ? '' : 'disabled' ?>>Download</button>
-      <span class="muted">Lewat API Fingerspot Personnel. Data tersedia 60 hari terakhir, tanpa tanggal masa depan. Fingerspot membatasi tarik data online 1 permintaan per menit untuk seluruh akun (semua mesin), jadi tiap mesin dan hari yang ada datanya butuh sekitar 1 menit; jika waktu habis, klik Download lagi. Scan yang sudah ada tidak ditambah dua kali.</span>
+      <span class="muted">Lewat API Fingerspot Personnel. Data tersedia 60 hari terakhir, tanpa tanggal masa depan. Fingerspot membatasi tarik data online 1 kali per menit untuk seluruh akun: semua mesin diminta sekaligus, lalu tiap hari berikutnya menunggu sekitar 1 menit; jika waktu habis, klik Download lagi. Scan yang sudah ada tidak ditambah dua kali.</span>
     </div>
   </form>
 </div>

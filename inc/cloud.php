@@ -198,7 +198,7 @@ function cloud_row_ds($r)
             'type_id' => $pick(['Type ID', 'Log Type'], 0), 'work_code' => $pick(['Work Code'], 0)];
 }
 
-/** Seconds to keep between two calls: Fingerspot limits the online data pull to one request a minute for the whole account. */
+/** Seconds between two rounds of requests: Fingerspot allows one burst a minute for the whole account. */
 function cloud_min_interval()
 {
     global $CONFIG;
@@ -206,9 +206,10 @@ function cloud_min_interval()
 }
 
 /**
- * Wait until the minimum interval passed since the last call by anyone on this server (web page or scheduled run share the
- * time kept in a temp file), then note the new call. shortcut: two processes starting at the same second can both pass, the
- * scheduled script's lock keeps that to a web click during a scheduled run.
+ * Wait until the minimum interval passed since the last round by anyone on this server (web page and scheduled run share
+ * the time kept in a temp file), then note the new round. All machines are asked together in one round (cloud_ds_multi), so
+ * three machines cost one wait, not three. shortcut: two processes starting in the same second can both pass; the scheduled
+ * script's lock keeps that to a web click during a scheduled run.
  */
 function cloud_throttle()
 {
@@ -227,31 +228,65 @@ function cloud_days($from, $to)
     return $out;
 }
 
-/** GET a desktop-API URL. Returns [json array, error]. */
-function cloud_ds_get($url)
+/** Turn one reply into [json array, error]. */
+function cloud_ds_decode($raw, $http, $err)
 {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
-    $raw = curl_exec($ch);
-    $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err = curl_error($ch);
-    curl_close($ch);
-    if ($raw === false) return [null, 'Tidak bisa terhubung ke api-ds.fingerspot.io: ' . $err];
+    if ($err !== '' || $raw === null || $raw === false) return [null, 'Tidak bisa terhubung ke api-ds.fingerspot.io: ' . $err];
     $json = json_decode($raw, true);
     if (!is_array($json)) return [null, "HTTP $http: " . substr(strip_tags($raw), 0, 120)];
     if (empty($json['success'])) return [null, 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : substr(preg_replace('/\s+/', ' ', $raw), 0, 100)) . ' (kunci API salah atau permintaan tidak dikenal)'];
     return [$json, null];
 }
 
-/** Days from $from to $to (Y-m-d) on which the cloud received scans of a device: date_list/{key}/{cloud}/{from}/{to}. */
-function cloud_get_dates_ds($cloudId, $from, $to)
+/** GET several desktop-API URLs at the same moment (one round). Returns [key => [json array|null, error|null]]. */
+function cloud_ds_multi($urls)
 {
-    $end = date('Y-m-d', strtotime($to . ' +1 day'));   // the end day is exclusive on the server
-    list($json, $err) = cloud_ds_get(cloud_ds_origin() . '/api/desktop/date_list/' . rawurlencode(cloud_token()) . '/' . rawurlencode($cloudId) . "/$from/$end");
-    if ($err) return [[], $err];
+    $mh = curl_multi_init();
+    $handles = [];
+    foreach ($urls as $k => $u) {
+        $ch = curl_init($u);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$k] = $ch;
+    }
+    do { $st = curl_multi_exec($mh, $running); if ($running) curl_multi_select($mh, 1.0); } while ($running && $st === CURLM_OK);
+    $out = [];
+    foreach ($handles as $k => $ch) {
+        $out[$k] = cloud_ds_decode(curl_multi_getcontent($ch), (int)curl_getinfo($ch, CURLINFO_HTTP_CODE), curl_error($ch));
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+    return $out;
+}
+
+/** GET one desktop-API URL. Returns [json array, error]. */
+function cloud_ds_get($url)
+{
+    $r = cloud_ds_multi(['x' => $url]);
+    return $r['x'];
+}
+
+/** The day-list URL of a device: date_list/{key}/{cloud}/{from}/{to+1} (the end day is exclusive on the server). */
+function cloud_ds_dates_url($cloudId, $from, $to)
+{
+    return cloud_ds_origin() . '/api/desktop/date_list/' . rawurlencode(cloud_token()) . '/' . rawurlencode($cloudId) . "/$from/" . date('Y-m-d', strtotime($to . ' +1 day'));
+}
+
+/** The days listed in a date_list reply. */
+function cloud_ds_dates($json)
+{
     $dates = [];
     foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if (isset($r['date'])) $dates[] = substr((string)$r['date'], 0, 10);
-    return [$dates, null];
+    return $dates;
+}
+
+/** Rows of an attendance_log reply, and a warning when the day filled the row limit: [rows, warning|null]. */
+function cloud_ds_rows($json)
+{
+    $rows = [];
+    foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
+    return [$rows, count($rows) >= CLOUD_DS_LIMIT ? 'mungkin ada scan lebih dari ' . CLOUD_DS_LIMIT . ' pada hari ini' : null];
 }
 
 /** One desktop-API attendance_log call for a device and upload date (Y-m-d). Returns [rows, error]. */
@@ -259,18 +294,16 @@ function cloud_get_attlog_ds($cloudId, $date, $tail = null)
 {
     list($json, $err) = cloud_ds_get(cloud_ds_url($cloudId, $date, cloud_token(), date('YmdHis'), $tail));
     if ($err) return [[], $err];
-    $rows = [];
-    foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
-    if (count($rows) >= CLOUD_DS_LIMIT) return [$rows, 'mungkin ada scan lebih dari ' . CLOUD_DS_LIMIT . ' pada hari ini'];
-    return [$rows, null];
+    return cloud_ds_rows($json);
 }
 
 /**
- * Scans per [machine sn => result] that reached Fingerspot.io on $from..$to (never later than today). Per machine one
- * date_list call finds the days with data, then one attendance_log call per such day; calls are 61 s apart for the whole
- * account (cloud_throttle) and the machines take turns. With $budget seconds (web page) it stops when the time is up and reports
- * the days left; run it again to continue. last_download_web only moves up to the last day covered, and only for a machine
- * that finished without errors, so a partial run never makes the next one skip data.
+ * Scans per [machine sn => result] that reached Fingerspot.io on $from..$to (never later than today). Fingerspot allows one
+ * burst of requests a minute for the account: every machine is asked together in one round (one day per machine per round),
+ * rounds are 61 s apart (cloud_throttle). Up to 3 days are fetched day by day; a longer range first asks date_list (one round)
+ * for the days that have data. With $budget seconds (web page) it stops when the time is up and reports the days left; run it
+ * again to continue. last_download_web only moves up to the last day covered (cloud_mark_downloaded), only for a machine that
+ * finished without errors, so a partial run never makes the next one skip data.
  */
 function cloud_download($from, $to, $sns = [], $gps = false, $budget = 0)
 {
@@ -281,45 +314,55 @@ function cloud_download($from, $to, $sns = [], $gps = false, $budget = 0)
     $known = array_flip(q('SELECT pegawai_pin FROM pegawai')->fetchAll(PDO::FETCH_COLUMN));
     $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, ?, 0)');
     $out = [];
-    $queue = [];   // sn => [cloud id, days left]
+    $cids = [];    // sn => cloud id
+    $queue = [];   // sn => days still to fetch
     if ($from > $to) return $out;
     // Cloud IDs are upper-case hex on Fingerspot.io
     foreach (cloud_devices() as $d) {
         if ($sns && !in_array($d['sn'], $sns, true)) continue;
-        $cid = strtoupper(trim($d['cloud_id']));
+        $cids[$d['sn']] = strtoupper(trim($d['cloud_id']));
         $out[$d['sn']] = ['name' => $d['device_name'], 'received' => 0, 'added' => 0, 'unknown_pins' => [], 'errors' => [], 'complete' => true];
-        if (count(cloud_days($from, $to)) <= 3) $dates = cloud_days($from, $to);   // a few days: asking the day list would cost as much as the days
-        else {
-            cloud_throttle();
-            list($dates, $err) = cloud_get_dates_ds($cid, $from, $to);
-            if ($err) { $out[$d['sn']]['errors'][] = $err; $out[$d['sn']]['complete'] = false; continue; }
+    }
+    $days = cloud_days($from, $to);
+    if (count($days) <= 3) foreach ($cids as $sn => $cid) $queue[$sn] = $days;
+    elseif ($cids) {
+        cloud_throttle();
+        $urls = [];
+        foreach ($cids as $sn => $cid) $urls[$sn] = cloud_ds_dates_url($cid, $from, $to);
+        foreach (cloud_ds_multi($urls) as $sn => $r) {
+            if ($r[1]) { $out[$sn]['errors'][] = $r[1]; $out[$sn]['complete'] = false; continue; }
+            $found = array_values(array_filter(cloud_ds_dates($r[0]), function ($x) use ($to) { return $x <= $to; }));
+            if ($found) $queue[$sn] = $found;
         }
-        $dates = array_values(array_filter($dates, function ($x) use ($to) { return $x <= $to; }));
-        if ($dates) $queue[$d['sn']] = [$cid, $dates];
     }
     while ($queue) {
-        foreach (array_keys($queue) as $sn) {
-            if ($budget && time() - $started >= $budget) {
-                foreach ($queue as $sn2 => $q2) { $out[$sn2]['errors'][] = 'Belum selesai (batas waktu): ' . implode(', ', $q2[1]) . ' — klik Download lagi untuk melanjutkan'; $out[$sn2]['complete'] = false; }
-                break 2;
-            }
-            list($cid, $days) = $queue[$sn];
-            $day = array_shift($days);
-            cloud_throttle();
-            list($rows, $err) = cloud_get_attlog_ds($cid, $day);
-            if ($err) {
-                $out[$sn]['errors'][] = "$day: $err";
-                $out[$sn]['complete'] = false;
-                if (preg_match('/Access Denied|HTTP 40/i', $err)) $days = [];   // will not get better on the next day
-            }
-            foreach ($rows as $r) {
-                $out[$sn]['received']++;
-                $ins->execute([$sn, $r['scan_date'], $r['pin'], $r['verify'], $r['type_id'], $r['work_code']]);
-                $out[$sn]['added'] += $ins->rowCount();
-                if (!isset($known[$r['pin']])) $out[$sn]['unknown_pins'][$r['pin']] = true;
-            }
-            if ($days) $queue[$sn][1] = $days; else unset($queue[$sn]);
+        if ($budget && time() - $started >= $budget) {
+            foreach ($queue as $sn => $left) { $out[$sn]['errors'][] = 'Belum selesai (batas waktu): ' . implode(', ', $left) . ' — klik Download lagi untuk melanjutkan'; $out[$sn]['complete'] = false; }
+            break;
         }
+        cloud_throttle();
+        $now = date('YmdHis');
+        $urls = $round = [];
+        foreach ($queue as $sn => $left) { $round[$sn] = array_shift($queue[$sn]); $urls[$sn] = cloud_ds_url($cids[$sn], $round[$sn], cloud_token(), $now); }
+        foreach (cloud_ds_multi($urls) as $sn => $r) {
+            $day = $round[$sn];
+            if ($r[1]) {
+                $out[$sn]['errors'][] = "$day: " . $r[1];
+                $out[$sn]['complete'] = false;
+                if (preg_match('/Access Denied|HTTP 40/i', $r[1])) $queue[$sn] = [];   // will not get better on the next day
+                $rows = [];
+            } else {
+                list($rows, $warn) = cloud_ds_rows($r[0]);
+                if ($warn) { $out[$sn]['errors'][] = "$day: $warn"; $out[$sn]['complete'] = false; }
+            }
+            foreach ($rows as $row) {
+                $out[$sn]['received']++;
+                $ins->execute([$sn, $row['scan_date'], $row['pin'], $row['verify'], $row['type_id'], $row['work_code']]);
+                $out[$sn]['added'] += $ins->rowCount();
+                if (!isset($known[$row['pin']])) $out[$sn]['unknown_pins'][$row['pin']] = true;
+            }
+        }
+        $queue = array_filter($queue);
     }
     foreach ($out as $sn => $res) {
         if ($res['complete']) cloud_mark_downloaded($sn, $from, $to);

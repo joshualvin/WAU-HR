@@ -57,6 +57,21 @@ unlink($tmp);
 check('xlsx header', [$rows[0]['A'], $rows[0]['B'], $rows[0]['C']], ['Cloud ID', 'PIN', 'Time Scan']);
 check('xlsx data', [$rows[1]['A'], $rows[1]['B'], $rows[1]['C']], ['C2635CA0C3193536', '99901', '2024-08-05 10:37:00']);
 
+// ---- replies, rounds ----
+check('decode ok', cloud_ds_decode('{"success":true,"data":[]}', 200, '')[1], null);
+check('decode denied', substr(cloud_ds_decode('{"success":false,"msg":"Access Denied"}', 200, '')[1], 0, 27), 'Fingerspot: Access Denied (');
+check('decode 404 body', substr(cloud_ds_decode('{ "message": "" }', 404, '')[1], 0, 10), 'Fingerspot');
+check('decode html', substr(cloud_ds_decode('<html>x</html>', 502, '')[1], 0, 9), 'HTTP 502:');
+check('decode curl error', substr(cloud_ds_decode(null, 0, 'timeout')[1], 0, 25), 'Tidak bisa terhubung ke a');
+$CONFIG['fingerspot_api_key'] = 'KEY';
+check('dates url end exclusive', cloud_ds_dates_url('CID', '2026-11-01', '2026-11-04'), 'https://api-ds.fingerspot.io/api/desktop/date_list/KEY/CID/2026-11-01/2026-11-05');
+unset($CONFIG['fingerspot_api_key']);
+check('dates parse', cloud_ds_dates(['data' => [['date' => '2026-11-02'], ['date' => '2026-11-03']]]), ['2026-11-02', '2026-11-03']);
+list($rws, $wrn) = cloud_ds_rows(['data' => [['PIN' => '1', 'Date Time' => '2026-11-03 08:00:00']]]);
+check('rows ok', [count($rws), $wrn], [1, null]);
+list($rws, $wrn) = cloud_ds_rows(['data' => array_fill(0, CLOUD_DS_LIMIT, ['PIN' => '1', 'Date Time' => '2026-11-03 08:00:00'])]);
+check('rows limit warning', $wrn !== null, true);
+
 // ---- spacing and days ----
 check('days', cloud_days('2026-11-02', '2026-11-04'), ['2026-11-02', '2026-11-03', '2026-11-04']);
 check('days single', cloud_days('2026-11-04', '2026-11-04'), ['2026-11-04']);
