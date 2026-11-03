@@ -6,10 +6,15 @@
 // of requests; after a night off or a failed run the next run catches up the missed days (a minute per day), at most 60 days
 // back. With [days] it covers exactly the last [days] days.
 // Fingerspot allows one burst of requests a minute for the whole account: all machines are asked together, then the next day
-// waits a minute. Scans already stored are not re-added. Schedule: plain "cloud_cli.php" every 5 minutes; no second task needed.
+// waits a minute. Scans already stored are not re-added. Schedule: plain "cloud_cli.php" every 5 minutes, all day; outside the
+// scan windows (07:00-10:30 and 14:00-19:30, Monday-Saturday, config 'fingerspot_windows') it exits at once.
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/cloud.php';
+
+// only when employees are likely to scan (cloud_in_window, Jakarta time, so the Windows clock zone does not matter); an explicit
+// [days] argument is a manual run and always goes
+if (!isset($argv[1]) && !cloud_in_window(time())) exit(0);
 
 if (cloud_token() === '') { fwrite(STDERR, "fingerspot_api_key is not set in config.php\n"); exit(1); }
 

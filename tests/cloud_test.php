@@ -72,6 +72,18 @@ check('rows ok', [count($rws), $wrn], [1, null]);
 list($rws, $wrn) = cloud_ds_rows(['data' => array_fill(0, CLOUD_DS_LIMIT, ['PIN' => '1', 'Date Time' => '2026-11-03 08:00:00'])]);
 check('rows limit warning', $wrn !== null, true);
 
+// ---- scan windows (2026-11-02 is a Monday, 2026-11-08 a Sunday) ----
+$at = function ($d, $hm) { return strtotime("$d $hm"); };
+check('window morning', cloud_in_window($at('2026-11-02', '08:30')), true);
+check('window edge start', cloud_in_window($at('2026-11-02', '07:00')), true);
+check('window edge end', cloud_in_window($at('2026-11-02', '10:30')), true);
+check('window midday off', cloud_in_window($at('2026-11-02', '12:00')), false);
+check('window afternoon', cloud_in_window($at('2026-11-02', '16:20')), true);
+check('window night off', cloud_in_window($at('2026-11-02', '21:00')), false);
+check('window saturday', cloud_in_window($at('2026-11-07', '16:00')), true);
+check('window sunday off', cloud_in_window($at('2026-11-08', '08:30')), false);
+check('window empty = always', cloud_in_window($at('2026-11-08', '03:00'), []), true);
+
 // ---- spacing and days ----
 check('days', cloud_days('2026-11-02', '2026-11-04'), ['2026-11-02', '2026-11-03', '2026-11-04']);
 check('days single', cloud_days('2026-11-04', '2026-11-04'), ['2026-11-04']);

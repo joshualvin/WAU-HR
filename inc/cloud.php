@@ -220,6 +220,21 @@ function cloud_throttle()
     @file_put_contents($file, (string)time());
 }
 
+/**
+ * Is $ts (Unix time, app time zone) inside a download window? Windows are 'HH:MM-HH:MM', Monday to Saturday (scans show up
+ * from about 07:20 to 19:40, mostly 08:00-09:00 and 16:00-17:00). config 'fingerspot_windows' overrides them, [] = always.
+ */
+function cloud_in_window($ts, $windows = null)
+{
+    global $CONFIG;
+    if ($windows === null) $windows = isset($CONFIG['fingerspot_windows']) ? $CONFIG['fingerspot_windows'] : ['07:00-10:30', '14:00-19:30'];
+    if (!$windows) return true;
+    if (date('N', $ts) == 7) return false;   // no scans on Sundays
+    $hm = date('H:i', $ts);
+    foreach ($windows as $w) { list($a, $b) = explode('-', $w); if ($hm >= $a && $hm <= $b) return true; }
+    return false;
+}
+
 /** Every day from $from to $to (Y-m-d). */
 function cloud_days($from, $to)
 {
