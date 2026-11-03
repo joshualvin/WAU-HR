@@ -3,6 +3,7 @@
 // employee once, then copy the scans of a date range (see inc/ftm.php). Admins only.
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/layout.php';
+require_once __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/ftm.php';
 require_login('admin');
@@ -47,7 +48,7 @@ list($counts, $newest) = $F ? ftm_scan_counts(date('Y-m-d', strtotime('-60 days'
 $copied = q("SELECT MAX(scan_date) FROM att_log WHERE sn LIKE 'FTM%'")->fetchColumn();
 $taken = array_count_values(array_map('intval', $map));
 
-page_header('Sinkron FTM', 'ftm.php');
+settings_header('Sinkron FTM', 'ftm.php');
 ?>
 <?php if ($error): ?><div class="flash err"><?= h($error) ?></div><?php endif; ?>
 <?php if ($F): ?>
@@ -89,4 +90,4 @@ page_header('Sinkron FTM', 'ftm.php');
   </form>
 </div>
 <?php endif; ?>
-<?php page_footer();
+<?php settings_footer();

@@ -2,6 +2,7 @@
 // HR → Penggajian: run payroll for a 21st–20th period, payslip history and exports, employee pay data, rates.
 // Admins only: salaries are confidential.
 require __DIR__ . '/inc/bootstrap.php';
+require __DIR__ . '/inc/layout.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/payroll.php';
@@ -735,7 +736,7 @@ else:
                                 'umr' => 'UMR/UMK daerah (Rp / bulan, 0 = tidak dicek): gaji pokok di bawahnya diberi tanda di Data gaji karyawan',
                                 'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],
     ];
-    hris_header('Pengaturan gaji', 'payroll', 'payroll.php?p=settings', 'Penggajian'); ?>
+    settings_header('Pengaturan gaji', 'settings.php', true); ?>
   <form method="post" class="section"><?= $csrf ?><input type="hidden" name="action" value="settings">
     <?php foreach ($fields as $title => $fs): ?><h2><?= h($title) ?></h2><div class="row2">
       <?php foreach ($fs as $k => $label): ?><label class="field"><span><?= h($label) ?></span><input type="text" name="<?= $k ?>" value="<?= h(rtrim(rtrim(number_format($s[$k], 2, '.', ''), '0'), '.')) ?>"></label><?php endforeach; ?></div>
@@ -745,6 +746,6 @@ else:
     <p class="muted">PPh 21 memakai tarif efektif rata-rata (TER, PP 58/2023) per bulan dan tarif Pasal 17 di periode Desember. Batas upah JP berubah tiap Maret; periksa angkanya.</p>
     <div class="formfoot"><button class="btn primary">Simpan</button></div>
   </form>
-<?php
+<?php echo '</div></div>';   // closes the settings frame opened by settings_header
 endif;
 hris_footer();

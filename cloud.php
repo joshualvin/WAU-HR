@@ -2,6 +2,8 @@
 // Mesin → Download dari Fingerspot.io
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/layout.php';
+require_once __DIR__ . '/inc/portal.php';
+require_once __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/cloud.php';
 $me = require_login();
 
@@ -56,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['xlsx']) && $_FILES['
     }
 }
 
-page_header('Download Fingerspot.io', 'cloud.php');
+settings_header('Download Fingerspot.io', 'cloud.php');
 ?>
 <?php if (!$hasToken): ?>
   <div class="flash err">API key belum diisi. Tambahkan baris <code>'fingerspot_api_key' => 'API_KEY_ANDA',</code> di <code>config.php</code> di server
@@ -120,4 +122,4 @@ page_header('Download Fingerspot.io', 'cloud.php');
   <p class="muted">Laporan langsung memakai scan baru; tidak perlu tombol Proses terpisah.</p>
 </div>
 <?php endif; ?>
-<?php page_footer();
+<?php settings_footer();

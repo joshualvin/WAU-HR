@@ -41,12 +41,9 @@ $tabs = [
 $fs = settings_ui() === 'fs';
 $tab = isset($tabs[get('tab')]) ? get('tab') : 'company';
 
-settings_ui();
 settings_header('Pengaturan', 'settings.php');
 ?>
-<nav class="settabs" aria-label="Kelompok pengaturan">
-  <?php foreach ($tabs as $k => $t): ?><a href="settings.php?tab=<?= h($k) ?>"<?= $k === $tab ? ' class="on" aria-current="page"' : '' ?>><?= h($t[0]) ?></a><?php endforeach; ?>
-</nav>
+<?php if ($fs) settings_tabstrip($tab); ?>
 <div class="card setlist">
   <h2><?= h($tabs[$tab][0]) ?> <span class="side"><a href="settings.php?tab=<?= h($tab) ?>&amp;ui=<?= $fs ? 'hr' : 'fs' ?>"><?= $fs ? 'Tampilan HR' : 'Tampilan Fingerspot' ?></a></span></h2>
   <?php foreach ($tabs[$tab][1] as $i): ?>

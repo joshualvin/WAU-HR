@@ -2,6 +2,8 @@
 // Mesin → Sinkron dari Program: copy new scans from Fingerspot Personnel's database (port 3309).
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/layout.php';
+require_once __DIR__ . '/inc/portal.php';
+require_once __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/sync.php';
 require_login();
 
@@ -27,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
     }
 }
 
-page_header('Sinkron dari Program', 'sync.php');
+settings_header('Sinkron dari Program', 'sync.php');
 ?>
 <?php if ($error): ?><div class="flash err"><?= h($error) ?></div><?php endif; ?>
 <div class="card">
@@ -53,4 +55,4 @@ page_header('Sinkron dari Program', 'sync.php');
   </table>
 </div>
 <?php endif; ?>
-<?php page_footer();
+<?php settings_footer();

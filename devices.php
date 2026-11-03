@@ -2,6 +2,8 @@
 // Fingerprint machines (mesin) and how recently each one sent scans.
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/layout.php';
+require_once __DIR__ . '/inc/portal.php';
+require_once __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/cloud.php';
 $me = require_login();
 ensure_device_archive();
@@ -57,7 +59,7 @@ $archived = q("SELECT d.sn, d.device_name, a.archived_at, (SELECT COUNT(*) FROM 
 $today = q("SELECT sn, COUNT(*) n, COUNT(DISTINCT pin) people FROM att_log WHERE scan_date >= CURDATE() GROUP BY sn")->fetchAll(PDO::FETCH_UNIQUE);
 $comm = ['0' => 'Ethernet', '1' => 'USB', '2' => 'Serial'];
 
-page_header('Mesin', 'devices.php');
+settings_header('Mesin', 'devices.php');
 ?>
 <div class="page-head"><h1>Daftar Mesin</h1><a class="btn" href="scans.php">Data Scanlog ›</a></div>
 <div class="card">
@@ -106,4 +108,4 @@ page_header('Mesin', 'devices.php');
   <p class="muted">SN dan Cloud ID ada di Fingerspot.io → Mesin Absensi → Aktif. SN yang sudah ada hanya diperbarui (nama, Cloud ID dan No. yang diisi; yang kosong tidak diubah). No. menentukan urutan di daftar. Aktifkan juga API SDK untuk mesin itu (Mesin Absensi → API SDK).</p>
 </div>
 <?php endif; ?>
-<?php page_footer();
+<?php settings_footer();

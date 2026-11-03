@@ -28,15 +28,86 @@ function ui_url($url, $ui)
     return $url . (strpos($url, '?') === false ? '?' : '&') . 'ui=' . $ui;
 }
 
-function settings_header($title, $active = 'settings.php')
+function settings_tabs()
 {
-    if (settings_ui() === 'fs') page_header($title, $active);
-    else hris_header($title, 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
+    $tabs = [
+        'company' => ['Perusahaan', [
+            ['master.php?t=pembagian1', 'Jabatan', 'Daftar jabatan karyawan'],
+            ['master.php?t=pembagian2', 'Departemen', 'Departemen / divisi'],
+            ['master.php?t=pembagian3', 'Kantor', 'Kantor dan cabang'],
+            ['company.php?p=org', 'Struktur organisasi', 'Atasan dan bawahan'],
+            ['master.php?t=cuti_normatif', 'Cuti normatif', 'Jenis cuti normatif dan hak harinya'],
+        ]],
+        'time' => ['Waktu', [
+            ['workhours.php', 'Jam kerja', 'Jam masuk, pulang, toleransi terlambat / pulang awal, rentang scan'],
+            ['schedules.php', 'Jadwal kerja', 'Jam kerja tiap hari dan pegawai yang memakai'],
+            ['holidays.php', 'Hari libur', 'Hari libur dan cuti bersama'],
+            ['master.php?t=kategori_izin', 'Kategori izin', 'Jenis izin yang bisa diajukan'],
+        ]],
+        'payroll' => ['Penggajian', [
+            ['payroll.php?p=settings', 'Pengaturan gaji', 'Tarif BPJS, UMR/UMK, lembur, potongan, akun jurnal'],
+            ['payroll.php?p=components', 'Komponen gaji', 'Tunjangan dan potongan tetap'],
+            ['payalloc.php', 'Alokasi biaya gaji', 'Pembagian biaya gaji ke departemen / akun'],
+            ['payroll.php?p=setup', 'Data gaji karyawan', 'Gaji pokok, PTKP, NPWP, BPJS tiap karyawan'],
+        ]],
+        'users' => ['Pengguna', [
+            ['users.php', 'User aplikasi', 'Akun admin / HR dan log perubahan'],
+            ['activity.php', 'Log aktivitas', 'Siapa mengubah apa, dan riwayat login'],
+        ]],
+        'integration' => ['Integrasi', [
+            ['cloud.php', 'Fingerspot.io (unduh scan)', 'Unduh scan dari cloud: Cloud ID mesin, jadwal unduh otomatis'],
+            ['sync.php', 'Fingerspot Personnel (sinkron)', 'Sinkron data karyawan dengan Fingerspot Personnel'],
+            ['ftm.php', 'FTM kantor pusat', 'Tarik scan dari FTM di kantor pusat'],
+            ['devices.php', 'Daftar mesin', 'Mesin absensi, scan terakhir, arsipkan mesin yang tidak dipakai'],
+            ['gps.php', 'Scan GPS (FiO)', 'Absen lewat ponsel (Fingerspot Online) dan titik lokasinya'],
+        ]],
+    ];
+    return $tabs;
 }
 
-function settings_footer()
+/** [tab key, item index] of the settings page being shown (matched on file name and query), or [null, null]. */
+function settings_where()
 {
-    if (settings_ui() === 'fs') page_footer(); else hris_footer();
+    $path = basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
+    foreach (settings_tabs() as $k => $t) foreach ($t[1] as $n => $i) {
+        $u = parse_url($i[0]);
+        if ($u['path'] !== $path) continue;
+        parse_str(isset($u['query']) ? $u['query'] : '', $need);
+        foreach ($need as $nk => $nv) if ((isset($_GET[$nk]) ? $_GET[$nk] : (isset($_POST[$nk]) ? $_POST[$nk] : '')) !== $nv) continue 2;
+        return [$k, $n];
+    }
+    return [null, null];
+}
+
+/** Tab strip along the top of the settings pages, Mekari style. */
+function settings_tabstrip($tab)
+{
+    echo '<nav class="settabs" aria-label="Kelompok pengaturan">';
+    foreach (settings_tabs() as $k => $t) echo '<a href="settings.php?tab=' . h($k) . '"' . ($k === $tab ? ' class="on" aria-current="page"' : '') . '>' . h($t[0]) . '</a>';
+    echo '</nav>';
+}
+
+/** Settings page frame: HR layout with the tab strip and the pages of the tab on the left, or the plain Fingerspot layout after ?ui=fs. */
+function settings_header($title, $active = 'settings.php', $hrOnly = false)
+{
+    if (!$hrOnly && settings_ui() === 'fs') { page_header($title, $active); return; }
+    hris_header($title, 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
+    list($tab, $cur) = settings_where();
+    if ($tab === null) $tab = isset($_GET['tab']) && isset(settings_tabs()[$_GET['tab']]) ? $_GET['tab'] : 'company';
+    echo '<div class="setshell"><nav class="setnav" aria-label="Pengaturan"><div class="settitle">Pengaturan</div>';
+    foreach (settings_tabs() as $k => $t) {
+        echo '<details' . ($k === $tab ? ' open' : '') . '><summary>' . h($t[0]) . '</summary>';
+        foreach ($t[1] as $n => $i) echo '<a href="' . h(ui_url($i[0], 'hr')) . '"' . ($k === $tab && $n === $cur ? ' class="on" aria-current="page"' : '') . '>' . h($i[1]) . '</a>';
+        echo '</details>';
+    }
+    echo '</nav><div class="setmain"><script>document.body.classList.add("setpage")</script>';
+}
+
+function settings_footer($hrOnly = false)
+{
+    if (!$hrOnly && settings_ui() === 'fs') { page_footer(); return; }
+    echo '</div></div>';
+    hris_footer();
 }
 
 function page_header($title, $active = '')

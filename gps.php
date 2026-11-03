@@ -3,6 +3,8 @@
 // (offices and sites with a radius). Scans come in with Download Fingerspot.io (Scan GPS App FiO).
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/layout.php';
+require_once __DIR__ . '/inc/portal.php';
+require_once __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/cloud.php';
 require_login();
 ensure_cloud_tables();
@@ -28,7 +30,7 @@ $to = valid_date(get('to')) ? get('to') : date('Y-m-d');
 $only = get('only');
 $fences = q('SELECT * FROM web_geofence ORDER BY name')->fetchAll();
 $rows = q('SELECT g.*, p.pegawai_nama FROM web_gps_scan g LEFT JOIN pegawai p ON p.pegawai_pin = g.pin WHERE g.scan_date >= ? AND g.scan_date < ? + INTERVAL 1 DAY ORDER BY g.scan_date DESC', [$from, $to])->fetchAll();
-page_header('Scan GPS (FiO)', 'gps.php');
+settings_header('Scan GPS (FiO)', 'gps.php');
 ?>
 <div class="card">
   <h2>Scan GPS dari aplikasi FiO</h2>
@@ -58,4 +60,4 @@ page_header('Scan GPS (FiO)', 'gps.php');
     <button class="btn primary">Simpan lokasi</button>
     <p class="muted">Koordinat bisa disalin dari Google Maps (klik kanan titik → angka pertama latitude, kedua longitude). Kosongkan nama untuk menghapus.</p></form>
 </div>
-<?php page_footer();
+<?php settings_footer();

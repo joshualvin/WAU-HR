@@ -45,7 +45,7 @@ function hris_modules()
 /** The attendance side of the system, the "Aplikasi" group of the menu: label => page. */
 function hris_apps()
 {
-    return ['Absensi (Fingerspot)' => 'dashboard.php', 'Input Cepat' => 'quick.php', 'Revisi Scan Manual' => 'manual.php', 'Scan Tidak Lengkap' => 'missing.php', 'Daftar mesin' => 'devices.php', 'Portal Pegawai' => 'portal.php'];
+    return ['Absensi (Fingerspot)' => 'dashboard.php', 'Input Cepat' => 'quick.php', 'Revisi Scan Manual' => 'manual.php', 'Scan Tidak Lengkap' => 'missing.php', 'Portal Pegawai' => 'portal.php'];
 }
 
 /** The "Integrasi" group of the menu: where data comes in from other systems. */
@@ -121,8 +121,7 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
     <hr class="sep">
     <?php $apps = []; foreach (hris_apps() as $l => $href) $apps[$href] = $l;
     $navItem('Aplikasi', 'finger', 'dashboard.php', false, $apps, null);
-    $integ = []; foreach (hris_integrations() as $l => $href) $integ[$href] = $l;
-    $navItem('Integrasi', 'plug', 'cloud.php', false, $integ, null); ?>
+    ?>
     <hr class="sep">
     <?php $navItem($mods['settings'][0], $mods['settings'][1], $mods['settings'][2], $module === 'settings', [], null); ?>
     <div class="bottom"><button type="button" class="railtoggle" id="railtoggle" title="Ciutkan menu" aria-label="Ciutkan menu"><?= hris_icon('chev') ?></button>
@@ -147,7 +146,7 @@ function hris_footer()
     g.addEventListener('mouseenter', place); g.addEventListener('focusin', place);
   });
   var mini = false; try { mini = localStorage.getItem('railmini') === '1'; } catch (e) {}
-  function apply() { rail.classList.toggle('wide', !mini); document.body.classList.toggle('railmini', mini); }
+  function apply() { var m = mini || document.body.classList.contains('setpage'); rail.classList.toggle('wide', !m); document.body.classList.toggle('railmini', m); }   // the settings pages keep the menu to icons, like Mekari
   apply();
   document.getElementById('railtoggle').addEventListener('click', function () { mini = !mini; try { localStorage.setItem('railmini', mini ? '1' : '0'); } catch (e) {} apply(); });
 })();
