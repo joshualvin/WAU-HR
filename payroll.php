@@ -701,6 +701,7 @@ h1{font-size:17px;margin:0}table{width:100%;border-collapse:collapse;margin-top:
 elseif ($p === 'setup'):
     $pays = pay_data();
     $status = current_employment();
+    $umr = payroll_settings()['umr'];
     hris_header('Data gaji karyawan', 'payroll', 'payroll.php?p=setup', 'Penggajian'); ?>
   <form method="post"><?= $csrf ?><input type="hidden" name="action" value="setup">
   <div class="toolbar" style="margin-bottom:10px"><label>Perubahan gaji berlaku mulai <input type="date" name="effective" value="<?= date('Y-m-d') ?>"></label>
@@ -710,7 +711,7 @@ elseif ($p === 'setup'):
     <thead><tr><th>Nama karyawan</th><th>Gaji pokok / bulan</th><th>Tunjangan tetap / bulan</th><th>Upah harian<br><small class="muted">harian lepas</small></th><th>Uang makan + transport / hari hadir</th><th>PTKP</th><th>NPWP / NIK</th><th>BPJS Kes</th><th>BPJS TK</th><th>JP</th></tr></thead><tbody>
     <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; $v = isset($pays[$id]) ? $pays[$id] : ['gaji_pokok' => '', 'tunjangan' => '', 'uang_harian' => '', 'upah_harian' => '', 'ptkp' => 'TK/0', 'npwp' => '', 'bpjs_kes' => 1, 'bpjs_tk' => 1, 'bpjs_jp' => 1];
         $harian = isset($status[$id]) && $status[$id]['status'] === 'harian'; ?>
-      <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span><br><a class="muted" style="font-size:12px" href="payroll.php?p=history&id=<?= $id ?>">riwayat</a><?= $harian ? ' <span class="pill grey">harian lepas</span>' : '' ?></td>
+      <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span><br><a class="muted" style="font-size:12px" href="payroll.php?p=history&id=<?= $id ?>">riwayat</a><?= !$harian && $umr > 0 && $v['gaji_pokok'] !== '' && (float)$v['gaji_pokok'] > 0 && (float)$v['gaji_pokok'] < $umr ? ' <span class="pill bad" title="Gaji pokok di bawah UMR/UMK ' . h(rupiah($umr)) . '">di bawah UMR</span>' : ''?><?= $harian ? ' <span class="pill grey">harian lepas</span>' : '' ?></td>
         <?php foreach (['gaji_pokok', 'tunjangan', 'upah_harian', 'uang_harian'] as $k): $off = $harian ? in_array($k, ['gaji_pokok', 'tunjangan'], true) : $k === 'upah_harian'; ?>
           <td><input type="text" inputmode="numeric" name="e[<?= $id ?>][<?= $k ?>]" value="<?= $v[$k] !== '' && $v[$k] !== null ? h(number_format((float)$v[$k], 0, ',', '.')) : '' ?>" style="width:120px;text-align:right<?= $off ? ';opacity:.45' : '' ?>" placeholder="0"<?= $off ? ' title="Tidak dipakai untuk status kepegawaian ini"' : '' ?>></td><?php endforeach; ?>
         <td><select name="e[<?= $id ?>][ptkp]"><?php foreach (ptkp_options() as $o): ?><option <?= $v['ptkp'] === $o ? 'selected' : '' ?>><?= $o ?></option><?php endforeach; ?></select></td>
@@ -731,6 +732,7 @@ else:
         'Lembur & potongan' => ['ot_divisor' => 'Pembagi upah per jam (173)', 'late_per_minute' => 'Potongan terlambat per menit (Rp, 0 = tidak dipotong)',
                                 'absent_deduct' => 'Potong gaji hari tidak hadir tanpa izin (1 = ya, 0 = tidak)',
                                 'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)',
+                                'umr' => 'UMR/UMK daerah (Rp / bulan, 0 = tidak dicek): gaji pokok di bawahnya diberi tanda di Data gaji karyawan',
                                 'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],
     ];
     hris_header('Pengaturan gaji', 'payroll', 'payroll.php?p=settings', 'Penggajian'); ?>

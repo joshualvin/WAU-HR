@@ -64,6 +64,7 @@ function payroll_defaults()
         'late_per_minute' => 0,                                           // company rule, rupiah per late minute
         'absent_deduct' => 1,                                             // 1 = deduct pro-rata for absent days without leave
         'ot_requires_approval' => 0,                                      // 1 = pay overtime only up to approved requests
+        'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];
 }
