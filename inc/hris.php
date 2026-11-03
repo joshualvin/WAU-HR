@@ -36,7 +36,7 @@ function hris_modules()
         'finance'  => ['Keuangan', 'wallet', ['payroll.php?p=reimburse' => 'Reimbursement', 'payroll.php?p=loans' => 'Kasbon', 'payroll.php?p=bonus' => 'Bonus penjualan']],
         'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=components' => 'Komponen gaji', 'taxsim.php' => 'Simulasi pajak', 'payroll.php?p=bupot' => 'Bukti potong', 'payalloc.php' => 'Alokasi biaya gaji',
                                                'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=settle' => 'Pesangon & penyelesaian', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=settings' => 'Pengaturan gaji']],
-        'performance' => ['Produktivitas', 'star', ['talent.php?p=reviews' => 'Penilaian kinerja', 'letters.php' => 'Template surat & dokumen']],
+        'performance' => ['Produktivitas', 'star', ['tasks.php' => 'Proyek & tugas', 'talent.php?p=reviews' => 'Penilaian kinerja', 'letters.php' => 'Template surat & dokumen']],
         'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset', 'notifikasi.php' => 'Notifikasi', 'files.php' => 'File', 'activity.php' => 'Log aktivitas', 'reports' => 'Laporan']],
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];
