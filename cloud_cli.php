@@ -7,7 +7,8 @@
 // back. With [days] it covers exactly the last [days] days.
 // Fingerspot allows one burst of requests a minute for the whole account: all machines are asked together, then the next day
 // waits a minute. Scans already stored are not re-added. Schedule: plain "cloud_cli.php" every 5 minutes, all day; outside the
-// scan windows (07:00-10:30 and 14:00-19:30, Monday-Saturday, config 'fingerspot_windows') it exits at once.
+// scan windows (07:00-10:30 and 14:00-19:30, Monday-Saturday, config 'fingerspot_windows'; all day on the 20th, the attendance
+// count day) it exits at once.
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/cloud.php';

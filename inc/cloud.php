@@ -223,10 +223,13 @@ function cloud_throttle()
 /**
  * Is $ts (Unix time, app time zone) inside a download window? Windows are 'HH:MM-HH:MM', Monday to Saturday (scans show up
  * from about 07:20 to 19:40, mostly 08:00-09:00 and 16:00-17:00). config 'fingerspot_windows' overrides them, [] = always.
+ * On the closing day of the attendance period (the 20th, period 21st-20th; config 'fingerspot_count_day') it is open all day,
+ * Sundays included, so the figures for the count are complete.
  */
 function cloud_in_window($ts, $windows = null)
 {
     global $CONFIG;
+    if ((int)date('j', $ts) === (isset($CONFIG['fingerspot_count_day']) ? (int)$CONFIG['fingerspot_count_day'] : 20)) return true;
     if ($windows === null) $windows = isset($CONFIG['fingerspot_windows']) ? $CONFIG['fingerspot_windows'] : ['07:00-10:30', '14:00-19:30'];
     if (!$windows) return true;
     if (date('N', $ts) == 7) return false;   // no scans on Sundays

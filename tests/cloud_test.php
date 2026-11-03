@@ -82,6 +82,11 @@ check('window afternoon', cloud_in_window($at('2026-11-02', '16:20')), true);
 check('window night off', cloud_in_window($at('2026-11-02', '21:00')), false);
 check('window saturday', cloud_in_window($at('2026-11-07', '16:00')), true);
 check('window sunday off', cloud_in_window($at('2026-11-08', '08:30')), false);
+check('count day 20th, night', cloud_in_window($at('2026-11-20', '23:30')), true);
+check('count day 20th, midday', cloud_in_window($at('2026-11-20', '12:30')), true);
+check('count day on a Sunday', cloud_in_window($at('2026-09-20', '03:00')), true);
+check('19th night still closed', cloud_in_window($at('2026-11-19', '23:00')), false);
+check('21st midday closed', cloud_in_window($at('2026-11-21', '12:00')), false);
 check('window empty = always', cloud_in_window($at('2026-11-08', '03:00'), []), true);
 
 // ---- spacing and days ----
