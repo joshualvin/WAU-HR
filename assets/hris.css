@@ -55,7 +55,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 /* shell */
 .shell { display: flex; min-height: calc(100vh - 56px - env(safe-area-inset-top, 0px)); }
-.rail { width: 56px; flex: none; background: var(--bg); border-right: 1px solid var(--line); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: calc(56px + env(safe-area-inset-top, 0px)); height: calc(100vh - 56px - env(safe-area-inset-top, 0px)); overflow-y: auto; }
+.rail { width: 56px; flex: none; background: var(--bg); border-right: 1px solid var(--line); padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; position: sticky; z-index: 45; top: calc(56px + env(safe-area-inset-top, 0px)); height: calc(100vh - 56px - env(safe-area-inset-top, 0px)); overflow-y: auto; }
 .rail.wide { width: 232px; }
 .rail .item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px; border-radius: 8px; color: var(--ink); font-size: 14px; text-align: left; white-space: nowrap; }
 .rail .item:hover { background: var(--canvas); }
