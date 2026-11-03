@@ -319,6 +319,8 @@ if ($page === 'home'):
   <?php ensure_company_tables(); $anns = current_announcements(date('Y-m-d'), 5); $cal = array_slice(company_calendar(date('Y-m-d'), 30), 0, 8);
   if ($anns): ?><div class="p-card"><h2>Pengumuman</h2><?php foreach ($anns as $a): ?><div style="border-top:1px solid var(--line);padding:8px 0"><b><?= $a['pinned'] ? '📌 ' : '' ?><?= h($a['title']) ?></b>
     <?= $a['event_date'] ? ' <span class="muted">· ' . h(fmt_date($a['event_date'])) . '</span>' : '' ?><div style="white-space:pre-line"><?= h($a['body']) ?></div></div><?php endforeach; ?></div><?php endif; ?>
+  <?php require_once __DIR__ . '/inc/oncall.php'; ensure_oncall_tables(); $myOnCall = q('SELECT day, note FROM web_oncall WHERE pegawai_id = ? AND day BETWEEN ? AND ? ORDER BY day', [$me['id'], date('Y-m-d'), date('Y-m-d', strtotime('+30 days'))])->fetchAll();
+  if ($myOnCall): ?><div class="p-card"><h2>Jadwal jaga saya (30 hari)</h2><?php foreach ($myOnCall as $o): ?><div class="muted" style="padding:2px 0"><b style="color:var(--text)"><?= h(fmt_date($o['day'])) ?></b><?= $o['note'] !== '' ? ' · ' . h($o['note']) : '' ?></div><?php endforeach; ?></div><?php endif; ?>
   <?php if ($cal): ?><div class="p-card"><h2>Kalender 30 hari</h2><?php foreach ($cal as $c): ?><div class="muted" style="padding:2px 0"><b style="color:var(--text)"><?= h(date('d-m', strtotime($c[0]))) ?></b> · <?= h($c[2]) ?></div><?php endforeach; ?></div><?php endif; ?>
   <?php ensure_talent_tables();
   $myTasks = q('SELECT * FROM web_checklist WHERE pegawai_id = ? AND who = ? ORDER BY done_at IS NOT NULL, due_date, sort', [$me['id'], 'Karyawan'])->fetchAll();
