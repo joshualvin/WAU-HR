@@ -3,7 +3,14 @@
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/layout.php';
 require __DIR__ . '/inc/cloud.php';
-require_login();
+$me = require_login();
+
+// Admin diagnostic: ?probe=<cloud id> tries the signing recipes against api-ds and prints which are accepted (key never shown)
+if ($me['role'] === 'admin' && get('probe') !== '') {
+    header('Content-Type: text/plain; charset=utf-8');
+    foreach (cloud_ds_probe(strtoupper(trim(get('probe'))), date('Y-m-d')) as $label => $msg) echo str_pad($label, 34) . $msg . "\n";
+    exit;
+}
 
 $devices = cloud_devices();
 $hasToken = cloud_token() !== '';

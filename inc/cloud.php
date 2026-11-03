@@ -107,6 +107,34 @@ function cloud_ds_url($cloudId, $uploadDate, $key, $now)
     return cloud_ds_base() . '/' . rawurlencode($cloudId) . "/$uploadDate/6/date_time/asc/json/" . md5($cloudId . $uploadDate . $now . $key) . "/$now";
 }
 
+/** Diagnostic: the reply of api-ds to each plausible signing recipe, [label => message]. A recipe the server accepts is not "Access Denied". */
+function cloud_ds_probe($cloudId, $date)
+{
+    $key = cloud_token();
+    $now = date('YmdHis');
+    $parts = ['c' => $cloudId, 'd' => $date, 'n' => $now, 'k' => $key];
+    $perms = [];
+    $permute = function ($items, $acc = []) use (&$permute, &$perms) {
+        if (!$items) { $perms[] = $acc; return; }
+        foreach ($items as $i => $it) { $rest = $items; unset($rest[$i]); $permute($rest, array_merge($acc, [$it])); }
+    };
+    $permute(['c', 'd', 'n', 'k']);
+    $permute(['c', 'n', 'k']);
+    $permute(['c', 'd', 'k']);
+    $recipes = [];
+    foreach ($perms as $p) foreach (['md5', 'sha1'] as $algo) $recipes[$algo . ' ' . implode('', $p)] = [$algo, $p];
+    $out = [];
+    foreach ($recipes as $label => $r) {
+        $auth = hash($r[0], implode('', array_map(function ($x) use ($parts) { return $parts[$x]; }, $r[1])));
+        $ch = curl_init(cloud_ds_base() . '/' . rawurlencode($cloudId) . "/$date/6/date_time/asc/json/$auth/$now");
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
+        $raw = (string)curl_exec($ch);
+        curl_close($ch);
+        $out[$label] = substr(str_replace($key, '***', preg_replace('/\s+/', ' ', $raw)), 0, 120);
+    }
+    return $out;
+}
+
 /** Normalise one reply row to what cloud_download inserts, or null. Accepts "Verify"/"Type ID" or "Verify Type"/"Log Type". */
 function cloud_row_ds($r)
 {
