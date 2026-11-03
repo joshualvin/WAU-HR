@@ -237,6 +237,16 @@ function verify_label($mode, $sn)
     return isset($m[(int)$mode]) ? $m[(int)$mode] : 'Kode ' . (int)$mode;
 }
 
+/**
+ * In/out type of a scan (att_log.inoutmode), by Fingerspot's codes; unknown codes show "Kode N". Code 0 is what machines send when
+ * nobody pressed an in/out key, so it is not "masuk": the app decides in and out from the first and last scan of the day.
+ */
+function inout_label($mode)
+{
+    $m = [0 => 'Otomatis', 1 => 'Pulang', 2 => 'Mulai istirahat', 3 => 'Selesai istirahat', 4 => 'Lembur masuk', 5 => 'Lembur pulang'];
+    return isset($m[(int)$mode]) ? $m[(int)$mode] : 'Kode ' . (int)$mode;
+}
+
 function employees($activeOnly = true)
 {
     $sql = 'SELECT pegawai_id, pegawai_pin, pegawai_nip, pegawai_nama, pegawai_status, tgl_mulai_kerja FROM pegawai';

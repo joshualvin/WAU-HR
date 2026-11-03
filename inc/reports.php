@@ -87,7 +87,7 @@ switch ($tab) {
             $mesin = isset($devices[$r['sn']]) ? $devices[$r['sn']] : (is_scan_type($r['sn']) ? 'Manual: ' . scan_types()[(int)$r['sn']][0] : '');
             $data[] = [date('d-m-Y H:i:s', strtotime($r['scan_date'])), date('d-m-Y', strtotime($r['scan_date'])), substr($r['scan_date'], 11, 8),
                        $r['pin'], $emp($r['pin'], 'pegawai_nip'), $emp($r['pin'], 'pegawai_nama'), $emp($r['pin'], 'jab'), $emp($r['pin'], 'dep'),
-                       $emp($r['pin'], 'kan'), $r['verifymode'], $r['inoutmode'], $r['work_code'], $r['sn'], $mesin];
+                       $emp($r['pin'], 'kan'), verify_label($r['verifymode'], $r['sn']), inout_label($r['inoutmode']), $r['work_code'], $r['sn'], $mesin];
             $perDate[$r['sn'] . '|' . substr($r['scan_date'], 0, 10)][$r['pin']] = 1;
             $perSn[$r['sn']][$r['pin']] = 1;
         }
