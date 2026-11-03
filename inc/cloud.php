@@ -113,30 +113,22 @@ function cloud_ds_url($cloudId, $date, $key, $now)
     return cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/" . cloud_ds_token($cloudId, $date, $key, $now) . '/3/0/';
 }
 
-/** Diagnostic: the reply of api-ds to each plausible token recipe, [label => message]. A recipe the server accepts is not "Access Denied". */
+/** Diagnostic: the reply of api-ds to each plausible layout x token recipe, [label => message]. A reply that is neither 404 ({"message":""}) nor Access Denied is a hit. */
 function cloud_ds_probe($cloudId, $date)
 {
     $key = cloud_token();
     $now = date('YmdHis');
-    $parts = ['c' => $cloudId, 'd' => $date, 'n' => $now, 'k' => $key];
-    $perms = [];
-    $permute = function ($items, $acc = []) use (&$permute, &$perms) {
-        if ($acc) $perms[] = $acc;
-        foreach ($items as $i => $it) { $rest = $items; unset($rest[$i]); $permute($rest, array_merge($acc, [$it])); }
-    };
-    $permute(['c', 'd', 'n', 'k']);
+    $sn = (string)q('SELECT sn FROM device WHERE UPPER(cloud_id) = ?', [strtoupper($cloudId)])->fetchColumn();
+    $tokens = ['c.k' => $cloudId . $key, 'c.d.k' => $cloudId . $date . $key, 'c.k.d' => $cloudId . $key . $date, 'k.c' => $key . $cloudId,
+               'c.n.k' => $cloudId . $now . $key, 'c.d.n.k' => $cloudId . $date . $now . $key, 'k.c.d' => $key . $cloudId . $date, 'c.sn.k' => $cloudId . $sn . $key];
+    $tails = ['3/0/' . $sn, '3/' . $sn . '/0', $sn . '/3/0', '3/0/0', '3/0/1', '3/0/3'];
     $out = [];
-    foreach ($perms as $p) {
-        if (!in_array('k', $p) || !in_array('c', $p)) continue;   // the signature needs at least the cloud id and the key
-        foreach (['', 'UPPER '] as $case) {
-            $token = md5(implode('', array_map(function ($x) use ($parts) { return $parts[$x]; }, $p)));
-            if ($case) $token = strtoupper($token);
-            $ch = curl_init(cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/$token/3/0/");
-            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
-            $raw = (string)curl_exec($ch);
-            curl_close($ch);
-            $out[$case . 'md5 ' . implode('', $p)] = substr(str_replace($key, '***', preg_replace('/\s+/', ' ', $raw)), 0, 120);
-        }
+    foreach ($tails as $tail) foreach ($tokens as $tn => $raw) {
+        $ch = curl_init(cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/" . md5($raw) . '/' . $tail);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
+        $reply = (string)curl_exec($ch);
+        curl_close($ch);
+        $out[str_replace($sn, 'SN', $tail) . '  md5(' . $tn . ')'] = substr(str_replace($key, '***', preg_replace('/\s+/', ' ', $reply)), 0, 110);
     }
     return $out;
 }
