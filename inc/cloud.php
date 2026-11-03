@@ -127,6 +127,8 @@ function cloud_get_attlog_ds($cloudId, $date)
     if (isset($json['success']) && !$json['success']) return [[], 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : 'gagal')];
     $rows = [];
     foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
+    // an empty day is normal, but show what the API said so a wrong parameter is visible (the key is stripped)
+    if (!$rows) return [[], 'Respon kosong: ' . substr(str_replace(cloud_token(), '***', $raw), 0, 160)];
     return [$rows, null];
 }
 
