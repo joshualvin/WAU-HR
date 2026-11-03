@@ -145,10 +145,11 @@ function hris_footer()
     function place() { var r = g.getBoundingClientRect(); f.style.left = rail.getBoundingClientRect().right + 'px'; f.style.top = Math.max(60, Math.min(r.top, window.innerHeight - f.offsetHeight - 8)) + 'px'; }
     g.addEventListener('mouseenter', place); g.addEventListener('focusin', place);
   });
-  var mini = false; try { mini = localStorage.getItem('railmini') === '1'; } catch (e) {}
-  function apply() { var m = mini || document.body.classList.contains('setpage'); rail.classList.toggle('wide', !m); document.body.classList.toggle('railmini', m); }   // the settings pages keep the menu to icons, like Mekari
+  var setpage = document.body.classList.contains('setpage');   // settings pages start with icons only, like Mekari; the button still opens the menu
+  var mini = setpage; try { if (!setpage) mini = localStorage.getItem('railmini') === '1'; } catch (e) {}
+  function apply() { rail.classList.toggle('wide', !mini); document.body.classList.toggle('railmini', mini); }
   apply();
-  document.getElementById('railtoggle').addEventListener('click', function () { mini = !mini; try { localStorage.setItem('railmini', mini ? '1' : '0'); } catch (e) {} apply(); });
+  document.getElementById('railtoggle').addEventListener('click', function () { mini = !mini; if (!setpage) try { localStorage.setItem('railmini', mini ? '1' : '0'); } catch (e) {} apply(); });
 })();
 </script>
 </body>
