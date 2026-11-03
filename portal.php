@@ -211,6 +211,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $t = q('SELECT * FROM web_checklist WHERE id = ? AND pegawai_id = ? AND who = ?', [(int)post('id'), $me['id'], 'Karyawan'])->fetch();
         if ($t) q('UPDATE web_checklist SET done_at = ?, done_by = ? WHERE id = ?', $t['done_at'] ? [null, '', $t['id']] : [date('Y-m-d H:i:s'), actor(), $t['id']]);
         redirect('portal.php');
+    } elseif ($action === 'my_task') {
+        require_once __DIR__ . '/inc/tasks.php';
+        ensure_task_tables();
+        if (task_set_status((int)post('id'), post('status'), $me['id'])) flash('Status tugas diperbarui.');   // only the assignee's own tasks
+        redirect('portal.php');
     } elseif ($action === 'self_review') {
         ensure_talent_tables();
         $cycle = q('SELECT * FROM web_review_cycle WHERE id = ? AND status = ?', [(int)post('cycle_id'), 'open'])->fetch();
@@ -321,6 +326,12 @@ if ($page === 'home'):
     <?= $a['event_date'] ? ' <span class="muted">· ' . h(fmt_date($a['event_date'])) . '</span>' : '' ?><div style="white-space:pre-line"><?= h($a['body']) ?></div></div><?php endforeach; ?></div><?php endif; ?>
   <?php require_once __DIR__ . '/inc/oncall.php'; ensure_oncall_tables(); $myOnCall = q('SELECT day, note FROM web_oncall WHERE pegawai_id = ? AND day BETWEEN ? AND ? ORDER BY day', [$me['id'], date('Y-m-d'), date('Y-m-d', strtotime('+30 days'))])->fetchAll();
   if ($myOnCall): ?><div class="p-card"><h2>Jadwal jaga saya (30 hari)</h2><?php foreach ($myOnCall as $o): ?><div class="muted" style="padding:2px 0"><b style="color:var(--text)"><?= h(fmt_date($o['day'])) ?></b><?= $o['note'] !== '' ? ' · ' . h($o['note']) : '' ?></div><?php endforeach; ?></div><?php endif; ?>
+  <?php require_once __DIR__ . '/inc/tasks.php'; ensure_task_tables(); $myTasks = tasks_for_employee($me['id']);
+  if ($myTasks): ?><div class="p-card"><h2>Tugas saya</h2><div class="p-list"><?php foreach ($myTasks as $t): $late = task_overdue($t, date('Y-m-d')); ?>
+    <div class="p-item"><div class="p-main"><b><?= h($t['title']) ?></b><div class="muted"><?= $t['project'] ? h($t['project']) . ' · ' : '' ?><?= h(task_statuses()[$t['status']]) ?><?= $t['due_date'] ? ' · tenggat <span style="' . ($late ? 'color:var(--bad);font-weight:600' : '') . '">' . h(fmt_date($t['due_date'])) . '</span>' : '' ?></div></div>
+      <form method="post" class="inline"><?= csrf_field() ?><input type="hidden" name="action" value="my_task"><input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
+        <?php if ($t['status'] === 'todo'): ?><button class="p-btn small" name="status" value="doing">Mulai</button> <?php endif; ?><button class="p-btn small primary" name="status" value="done">Selesai</button></form></div>
+  <?php endforeach; ?></div></div><?php endif; ?>
   <?php if ($cal): ?><div class="p-card"><h2>Kalender 30 hari</h2><?php foreach ($cal as $c): ?><div class="muted" style="padding:2px 0"><b style="color:var(--text)"><?= h(date('d-m', strtotime($c[0]))) ?></b> · <?= h($c[2]) ?></div><?php endforeach; ?></div><?php endif; ?>
   <?php ensure_talent_tables();
   $myTasks = q('SELECT * FROM web_checklist WHERE pegawai_id = ? AND who = ? ORDER BY done_at IS NOT NULL, due_date, sort', [$me['id'], 'Karyawan'])->fetchAll();
