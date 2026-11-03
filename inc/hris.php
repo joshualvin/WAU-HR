@@ -41,9 +41,9 @@ function hris_modules()
         'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset', 'notifikasi.php' => 'Notifikasi', 'files.php' => 'File', 'activity.php' => 'Log aktivitas', 'reports' => 'Laporan']],
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];
-}
     if (empty($CONFIG['use_shifts'])) unset($mods['time'][2]['shifts'], $mods['time'][2]['swaps']);   // no shift work here; set 'use_shifts' => true in config.php to bring them back
     return $mods;
+}
 
 /** The attendance side of the system, the "Aplikasi" group of the menu: label => page. */
 function hris_apps()
