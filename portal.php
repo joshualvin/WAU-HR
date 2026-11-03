@@ -284,6 +284,7 @@ if (q('SELECT COUNT(*) FROM web_warning WHERE pegawai_id = ?', [$me['id']])->fet
 if (!isset($tabs[$page])) $page = 'home';
 portal_header($tabs[$page], $tabs, $page, $emp);
 if ($error) echo '<div class="p-alert err">' . h($error) . '</div>';
+if (empty($CONFIG['use_shifts'])) unset($tabs['shift']);   // no shift work here ('use_shifts' => true in config.php brings the tab back)
 foreach (take_flashes() as $f) echo '<div class="p-alert ' . h($f[0]) . '">' . h($f[1]) . '</div>';
 
 // ---------- pages ----------

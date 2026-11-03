@@ -28,7 +28,8 @@ function hris_icon($name)
 /** Modules: key => [label, icon, [sub key => label] or a link to a Fingerspot-style page]. */
 function hris_modules()
 {
-    return [
+    global $CONFIG;
+    $mods = [
         'home'     => ['Beranda', 'home', ['home' => 'Beranda']],
         'employee' => ['Karyawan', 'people', ['employees' => 'Daftar karyawan', 'transfer.php' => 'Mutasi karyawan', 'bulkupdate.php' => 'Update data massal', 'recruit.php?p=manpower' => 'Manpower planning', 'talent.php?p=onboarding&t=onboarding' => 'Onboarding', 'talent.php?p=onboarding&t=offboarding' => 'Offboarding', 'discipline.php' => 'Surat peringatan']],
         'recruit'  => ['Rekrutmen', 'brief', ['recruit.php?p=jobs' => 'Lowongan & kandidat', 'careers.php' => 'Halaman karir']],
@@ -41,6 +42,8 @@ function hris_modules()
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];
 }
+    if (empty($CONFIG['use_shifts'])) unset($mods['time'][2]['shifts'], $mods['time'][2]['swaps']);   // no shift work here; set 'use_shifts' => true in config.php to bring them back
+    return $mods;
 
 /** The attendance side of the system, the "Aplikasi" group of the menu: label => page. */
 function hris_apps()
