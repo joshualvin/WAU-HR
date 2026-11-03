@@ -145,7 +145,7 @@ page_header('Input Cepat', 'quick.php');
       <button type="button" class="btn small" onclick="tick(false)">Kosongkan</button>
       <?php foreach ($depts as $id => $name): ?><button type="button" class="btn small" onclick="tickDept(<?= (int)$id ?>)"><?= h($name) ?></button><?php endforeach; ?>
     </div>
-    <div id="emps" style="max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:6px 8px">
+    <div id="emps" style="border:1px solid var(--line);border-radius:6px;padding:6px 8px">
       <?php foreach ($emps as $e): ?>
         <label class="check" data-name="<?= h(strtolower($e['pegawai_nama'] . ' ' . $e['pegawai_pin'])) ?>" data-dept="<?= (int)$e['pembagian2_id'] ?>">
           <input type="checkbox" name="emp[]" value="<?= (int)$e['pegawai_id'] ?>" <?= in_array((int)$e['pegawai_id'], $picked, true) ? 'checked' : '' ?>>
