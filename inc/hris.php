@@ -31,7 +31,7 @@ function hris_modules()
         'recruit'  => ['Rekrutmen', 'brief', ['recruit.php?p=jobs' => 'Lowongan & kandidat', 'careers.php' => 'Halaman karir']],
         'time'     => ['Manajemen Waktu', 'clock', ['attendance' => 'Kehadiran', 'shifts' => 'Jadwal shift', 'swaps' => 'Tukar shift', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'balance' => 'Saldo cuti', 'gps.php' => 'Scan GPS (FiO)']],
         'finance'  => ['Keuangan', 'wallet', ['payroll.php?p=reimburse' => 'Reimbursement', 'payroll.php?p=loans' => 'Kasbon', 'payroll.php?p=bonus' => 'Bonus penjualan']],
-        'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=bupot' => 'Bukti potong', 'payroll.php?p=components' => 'Komponen gaji', 'payroll.php?p=settle' => 'Pesangon & penyelesaian',
+        'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=bupot' => 'Bukti potong', 'payroll.php?p=components' => 'Komponen gaji', 'taxsim.php' => 'Simulasi pajak', 'payroll.php?p=settle' => 'Pesangon & penyelesaian',
                                                'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=settings' => 'Pengaturan gaji']],
         'performance' => ['Kinerja', 'star', ['talent.php?p=reviews' => 'Penilaian kinerja']],
         'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset', 'activity.php' => 'Log aktivitas']],
