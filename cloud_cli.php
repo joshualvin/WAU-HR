@@ -4,7 +4,9 @@
 // Downloads the scans that reached Fingerspot.io for every machine with a Cloud ID, through the free Fingerspot Personnel
 // API (key in config.php). Without [days] it starts the day before each machine's last clean download (so a missed or failed
 // run is caught up by the next one), at most 60 days back; with [days] it covers exactly the last [days] days.
-// Fingerspot allows one pull per machine per minute, so a run takes a few minutes. Scans already stored are not re-added.
+// Fingerspot allows one pull per machine per minute, so a run over several days takes a few minutes. Scans already stored
+// are not re-added. Typical schedule: "cloud_cli.php 1" every 5 minutes (today only, one request per machine) and a plain
+// "cloud_cli.php" once an hour (catches up anything missed).
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/cloud.php';

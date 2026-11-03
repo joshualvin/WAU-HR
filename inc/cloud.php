@@ -274,9 +274,12 @@ function cloud_download($from, $to, $sns = [], $gps = false, $budget = 0)
         if ($sns && !in_array($d['sn'], $sns, true)) continue;
         $cid = strtoupper(trim($d['cloud_id']));
         $out[$d['sn']] = ['name' => $d['device_name'], 'received' => 0, 'added' => 0, 'unknown_pins' => [], 'errors' => [], 'complete' => true];
-        cloud_throttle($cid);
-        list($dates, $err) = cloud_get_dates_ds($cid, $from, $to);
-        if ($err) { $out[$d['sn']]['errors'][] = $err; $out[$d['sn']]['complete'] = false; continue; }
+        if ($from === $to) $dates = [$from];   // a single day needs no day list: one call per machine
+        else {
+            cloud_throttle($cid);
+            list($dates, $err) = cloud_get_dates_ds($cid, $from, $to);
+            if ($err) { $out[$d['sn']]['errors'][] = $err; $out[$d['sn']]['complete'] = false; continue; }
+        }
         $dates = array_values(array_filter($dates, function ($x) use ($to) { return $x <= $to; }));
         if ($dates) $queue[$d['sn']] = [$cid, $dates];
     }
@@ -305,10 +308,20 @@ function cloud_download($from, $to, $sns = [], $gps = false, $budget = 0)
         }
     }
     foreach ($out as $sn => $res) {
-        if ($res['complete']) q('UPDATE device SET last_download_web = ? WHERE sn = ?', [$to, $sn]);
+        if ($res['complete']) cloud_mark_downloaded($sn, $from, $to);
         $out[$sn]['unknown_pins'] = array_keys($res['unknown_pins']);
     }
     return $out;
+}
+
+/**
+ * Note that a machine's cloud scans are covered through $to. Only when this run joins the days already covered
+ * (last_download_web >= the day before $from); a quick "today" run must not hide an earlier gap from the next full run.
+ */
+function cloud_mark_downloaded($sn, $from, $to)
+{
+    q('UPDATE device SET last_download_web = ? WHERE sn = ? AND (last_download_web IS NULL OR last_download_web >= ?) AND (last_download_web IS NULL OR last_download_web < ?)',
+        [$to, $sn, date('Y-m-d', strtotime($from . ' -1 day')), $to]);
 }
 
 // ---------- Import from a Fingerspot.io .xlsx export (Laporan → Absensi Perangkat / Absensi GPS) ----------
