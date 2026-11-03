@@ -94,7 +94,7 @@ function settings_header($title, $active = 'settings.php', $hrOnly = false)
     hris_header($title, 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
     list($tab, $cur) = settings_where();
     if ($tab === null) $tab = isset($_GET['tab']) && isset(settings_tabs()[$_GET['tab']]) ? $_GET['tab'] : 'company';
-    echo '<div class="setshell"><nav class="setnav" aria-label="Pengaturan"><div class="settitle">Pengaturan</div>';
+    echo '<div class="setshell"><button type="button" class="setmob" aria-label="Menu pengaturan" onclick="this.parentNode.classList.toggle(\'open\')">Pengaturan' . ($cur !== null ? ' · ' . h(settings_tabs()[$tab][1][$cur][1]) : '') . '</button><nav class="setnav" aria-label="Pengaturan"><div class="settitle">Pengaturan</div>';
     foreach (settings_tabs() as $k => $t) {
         echo '<details' . ($k === $tab ? ' open' : '') . '><summary>' . h($t[0]) . '</summary>';
         foreach ($t[1] as $n => $i) echo '<a href="' . h(ui_url($i[0], 'hr')) . '"' . ($k === $tab && $n === $cur ? ' class="on" aria-current="page"' : '') . '>' . h($i[1]) . '</a>';
