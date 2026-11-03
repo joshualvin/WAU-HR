@@ -16,6 +16,29 @@ function menu_icon($name)
     return '<svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">' . $i[$name] . '</svg>';
 }
 
+/** The settings pages open in the HR layout, or in the Fingerspot layout after ?ui=fs (remembered in the session; ?ui=hr switches back). */
+function settings_ui()
+{
+    if (isset($_GET['ui']) && in_array($_GET['ui'], ['fs', 'hr'], true)) $_SESSION['ui'] = $_GET['ui'];
+    return isset($_SESSION['ui']) ? $_SESSION['ui'] : 'hr';
+}
+
+function ui_url($url, $ui)
+{
+    return $url . (strpos($url, '?') === false ? '?' : '&') . 'ui=' . $ui;
+}
+
+function settings_header($title, $active = 'settings.php')
+{
+    if (settings_ui() === 'fs') page_header($title, $active);
+    else hris_header($title, 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
+}
+
+function settings_footer()
+{
+    if (settings_ui() === 'fs') page_footer(); else hris_footer();
+}
+
 function page_header($title, $active = '')
 {
     global $CONFIG;
@@ -56,7 +79,7 @@ function page_header($title, $active = '')
 <div class="titlebar">ABSENSI <?= h(isset($CONFIG['company']) ? strtoupper($CONFIG['company']) : 'WEB') ?> - [<?= h($activeSection) ?>]</div>
 <header class="toolbar">
   <?php foreach ($sections as $name => $pages): ?>
-    <a href="<?= h(key($pages)) ?>" class="tbtn<?= $name === $activeSection ? ' on' : '' ?>"><?= menu_icon($name) ?><span><?= h($name) ?></span></a>
+    <a href="<?= h($name === 'Pengaturan' ? ui_url(key($pages), 'fs') : key($pages)) ?>" class="tbtn<?= $name === $activeSection ? ' on' : '' ?>"><?= menu_icon($name) ?><span><?= h($name) ?></span></a>
   <?php endforeach; ?>
 </header>
 <?php endif; ?>
@@ -65,7 +88,7 @@ function page_header($title, $active = '')
 <aside class="side">
   <div class="side-title"><?= h($activeSection) ?></div>
   <?php foreach ($sections[$activeSection] as $href => $label): ?>
-    <a href="<?= h($href) ?>" class="<?= $href === $current ? 'on' : '' ?>"><?= h($label) ?></a>
+    <a href="<?= h($activeSection === 'Pengaturan' ? ui_url($href, 'fs') : $href) ?>" class="<?= $href === $current ? 'on' : '' ?>"><?= h($label) ?></a>
   <?php endforeach; ?>
 </aside>
 <?php endif; ?>

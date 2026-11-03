@@ -1,6 +1,7 @@
 <?php
 // Public holidays and collective leave (libur). Admins only.
 require __DIR__ . '/inc/bootstrap.php';
+require __DIR__ . '/inc/layout.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/govcal.php';
@@ -48,7 +49,7 @@ $have = array_column($rows, 'libur_tgl');
 $gov = gov_holidays($year);
 $missing = array_filter($gov, function ($g) use ($have) { return !in_array($g[0], $have, true); });
 $missingCuti = count(array_filter($missing, function ($g) { return $g[2] === 2; }));
-hris_header('Hari Libur ' . $year, 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
+settings_header('Hari Libur ' . $year, 'settings.php');
 ?>
 <div class="page-head">
   <h1>Hari Libur <?= $year ?></h1>
@@ -91,4 +92,4 @@ hris_header('Hari Libur ' . $year, 'settings', 'settings.php', '<a href="setting
     <?php endif; ?>
   </div>
 </div>
-<?php hris_footer();
+<?php settings_footer();

@@ -1,6 +1,7 @@
 <?php
 // Work hours (jam_kerja): start/end, tolerances and scan windows. Admins only.
 require __DIR__ . '/inc/bootstrap.php';
+require __DIR__ . '/inc/layout.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
 require_login('admin');
@@ -59,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-hris_header('Jam Kerja', 'settings', 'settings.php', '<a href="settings.php">Pengaturan</a>');
+settings_header('Jam Kerja', 'settings.php');
 ?>
 <div class="page-head">
   <h1>Jam Kerja</h1>
@@ -113,4 +114,4 @@ hris_header('Jam Kerja', 'settings', 'settings.php', '<a href="settings.php">Pen
   </form>
 </div>
 <?php endif; ?>
-<?php hris_footer();
+<?php settings_footer();

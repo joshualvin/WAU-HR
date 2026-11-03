@@ -153,3 +153,13 @@ body.busy::after { content: "Memproses…"; position: fixed; left: 50%; top: 45%
 /* inputs inside grid rows stay compact */
 main table input, main table select { height: 18px; padding: 0 2px; }
 main table select { max-width: 170px; }
+
+/* settings.php shown in the Fingerspot layout */
+.settabs { display: flex; gap: 2px; margin-bottom: 4px; }
+.settabs a { padding: 3px 12px; border: 1px solid #a0a0a0; background: #eee; color: #000; text-decoration: none; }
+.settabs a.on { background: #fff; font-weight: 700; }
+.setrow { display: block; padding: 4px 6px; border-top: 1px solid #d6d6d6; color: #000; text-decoration: none; }
+.setrow:hover { background: #e8f0fb; }
+.setrow small { display: block; color: #666; }
+.setrow .chev { display: none; }
+.card h2 .side { float: right; font-size: 12px; font-weight: 400; }
