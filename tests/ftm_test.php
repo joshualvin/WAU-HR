@@ -12,4 +12,8 @@ check('Januar / Yanuar', ftm_suggest('Januar Budiyanto', $people), 17);
 check('exact beats near', ftm_suggest('Hendry', $people), 9);
 check('no match', ftm_suggest('Djoko Utomo', $people), 0);
 check('too short', ftm_suggest('1', $people), 0);
+// PIN reuse: the first scan after the last gap of 180+ days
+$days = ['501' => ['2014-01-28', '2019-05-18', '2024-06-03', '2024-06-04'], '301' => ['2014-01-28', '2014-02-01', '2014-07-01'], '402' => ['2026-01-02']];
+check('restart after gap', ftm_pin_restarts($days), ['501' => '2024-06-03']);
+check('last gap wins', ftm_pin_restarts(['9' => ['2010-01-01', '2012-01-01', '2012-02-01', '2015-01-01']]), ['9' => '2015-01-01']);
 echo "ftm_test: $ok checks passed\n";

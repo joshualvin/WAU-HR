@@ -40,6 +40,7 @@ The app adds two tables of its own to the database: `web_user` (sign-ins) and `w
 ## Head-office scans from FTM (Fingerspot Time Management)
 - Head office scans on a machine managed by FTM, whose database `ftm` is on the same MySQL server (`ftm_db` in `config.php`, default `ftm`; `''` = off). FTM has its own PINs (Riko = 402 there, 9213 here).
 - **Mesin → Sinkron FTM (kantor pusat)** (`ftm.php`): map each FTM PIN to an employee once (suggested from the first name, e.g. Freddy → Fredy, Nugraheni → Heni, Januar → Yanuar; check and save), then sync a date range. Copied scans get the employee's PIN and sn `FTM` + the FTM machine (`FTM0` = manual corrections made in FTM). A sync replaces the copied scans of its range, so corrections and deletions in FTM come through. Attendance, reports, THR and payroll then include head office.
+- FTM scans carry only a PIN, never a name, and a PIN can be handed to someone new. Each pair has a **Berlaku sejak** (valid-from) date: scans on that PIN before it are not copied to the employee. The page suggests it where a PIN was idle for 6 months or more (e.g. PIN 501: scans to May 2019, then nothing until June 2024).
 - Automatic: Task Scheduler every 15 minutes, `C:\xampp\php\php.exe C:\xampp\htdocs\WAU-HR\ftm_cli.php 3` (last 3 days).
 - The FTM desktop program must save to the server's `ftm` database (its `user.fin`: host 192.168.20.102, port 3306); the page warns when FTM's newest scan is more than 3 days old.
 

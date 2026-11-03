@@ -19,8 +19,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $F) {
     check_csrf();
     if (post('action') === 'map') {
         $n = 0;
+        $since = isset($_POST['since']) ? (array)$_POST['since'] : [];
         foreach (isset($_POST['map']) ? (array)$_POST['map'] : [] as $pin => $id) {
-            if ((int)$id) { q('REPLACE INTO web_ftm_map (ftm_pin, pegawai_id) VALUES (?, ?)', [(string)$pin, (int)$id]); $n++; }
+            $vf = isset($since[$pin]) && valid_date($since[$pin]) ? $since[$pin] : null;
+            if ((int)$id) { q('REPLACE INTO web_ftm_map (ftm_pin, pegawai_id, valid_from) VALUES (?, ?, ?)', [(string)$pin, (int)$id, $vf]); $n++; }
             else q('DELETE FROM web_ftm_map WHERE ftm_pin = ?', [(string)$pin]);
         }
         audit('ftm_map', "$n PIN dipasangkan");
@@ -36,7 +38,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $F) {
 }
 
 $emps = $F ? ftm_employees() : [];
-$map = q('SELECT ftm_pin, pegawai_id FROM web_ftm_map')->fetchAll(PDO::FETCH_KEY_PAIR);
+$mapRows = q('SELECT ftm_pin, pegawai_id, valid_from FROM web_ftm_map')->fetchAll(PDO::FETCH_UNIQUE);
+$map = array_map(function ($r) { return $r['pegawai_id']; }, $mapRows);
+$restarts = $F ? ftm_pin_restarts(ftm_scan_days()) : [];
 $people = [];
 foreach (employees(true) as $e) $people[$e['pegawai_id']] = $e['pegawai_nama'];
 list($counts, $newest) = $F ? ftm_scan_counts(date('Y-m-d', strtotime('-60 days'))) : [[], null];
@@ -67,18 +71,21 @@ page_header('Sinkron FTM', 'ftm.php');
   <h2>Pasangan PIN FTM → pegawai</h2>
   <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="map"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
   <table>
-    <tr><th>PIN FTM</th><th>Nama di FTM</th><th class="num">Scan 60 hari</th><th>Pegawai di aplikasi</th><th></th></tr>
+    <tr><th>PIN FTM</th><th>Nama di FTM</th><th class="num">Scan 60 hari</th><th>Pegawai di aplikasi</th><th title="Scan PIN ini sebelum tanggal ini milik orang lain dan tidak disalin">Berlaku sejak</th><th></th></tr>
     <?php foreach ($emps as $e):
         $saved = isset($map[$e['pin']]) ? (int)$map[$e['pin']] : 0;
         $sug = $saved ? 0 : ftm_suggest($e['name'], $people);
         $sel = $saved ?: $sug; ?>
       <tr<?= $e['active'] ? '' : ' class="muted"' ?>><td><?= h($e['pin']) ?></td><td><?= h($e['name']) ?><?= $e['active'] ? '' : ' (tidak aktif)' ?></td>
         <td class="num"><?= isset($counts[$e['pin']]) ? (int)$counts[$e['pin']] : '' ?></td>
+        <?php $vf = isset($mapRows[$e['pin']]) ? $mapRows[$e['pin']]['valid_from'] : null; $re = isset($restarts[$e['pin']]) ? $restarts[$e['pin']] : null; ?>
         <td><select name="map[<?= h($e['pin']) ?>]"><option value="0">— tidak disalin —</option><?php foreach ($people as $id => $n): ?><option value="<?= (int)$id ?>"<?= (int)$id === $sel ? ' selected' : '' ?>><?= h($n) ?></option><?php endforeach; ?></select></td>
+        <td><input type="date" name="since[<?= h($e['pin']) ?>]" value="<?= h($vf ?: '') ?>">
+          <?php if ($re && $re !== $vf): ?><br><small class="muted">PIN kosong lama sebelum <a href="#" onclick="this.closest('td').querySelector('input').value='<?= h($re) ?>';return false"><?= h(date('d-m-Y', strtotime($re))) ?></a> — mungkin dipakai orang lain sebelumnya</small><?php endif; ?></td>
         <td class="muted"><?= $saved ? (isset($taken[$saved]) && $taken[$saved] > 1 ? '<b style="color:#c00">dipakai ' . $taken[$saved] . ' PIN</b>' : 'tersimpan') : ($sug ? '<b>saran</b>, periksa lalu simpan' : '') ?></td></tr>
     <?php endforeach; ?>
   </table>
-  <p style="margin-top:8px"><button class="btn primary">Simpan pasangan</button> <span class="muted">Saran dari kemiripan nama depan; pastikan benar sebelum menyimpan. Pegawai yang absen di mesin Fingerspot dan di FTM mendapat scan dari keduanya.</span></p>
+  <p style="margin-top:8px"><button class="btn primary">Simpan pasangan</button> <span class="muted">Saran dari kemiripan nama depan; pastikan benar sebelum menyimpan. Scan FTM hanya berisi PIN, tanpa nama: bila sebuah PIN pernah dipakai orang lain, isi "Berlaku sejak" dengan tanggal pegawai ini mulai memakainya (klik tanggal saran bila PIN pernah lama kosong), lalu sinkron ulang. Pegawai yang absen di mesin Fingerspot dan di FTM mendapat scan dari keduanya.</span></p>
   </form>
 </div>
 <?php endif; ?>

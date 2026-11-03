@@ -3,6 +3,8 @@
 // att_log, so attendance, reports and payroll see them. FTM has its own PINs: each FTM PIN is mapped to an employee
 // here (web_ftm_map), and copied scans get that employee's PIN and sn 'FTM' + the FTM machine (FTM0 = FTM's manual
 // corrections). A sync replaces the copied scans of its date range, so corrections and deletions in FTM come through.
+// FTM scans carry only a PIN, and a PIN can be given to someone new: each pair has a valid-from date (the day the person
+// named in FTM started using that PIN), and older scans on the PIN are not copied to them.
 // config.php: ftm_db (default 'ftm'; '' = off).
 
 const FTM_SN = 'FTM';
@@ -26,8 +28,34 @@ function ensure_ftm_tables()
 {
     db()->exec("CREATE TABLE IF NOT EXISTS web_ftm_map (
         ftm_pin VARCHAR(32) NOT NULL PRIMARY KEY,
-        pegawai_id INT NOT NULL
+        pegawai_id INT NOT NULL,
+        valid_from DATE NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+    if (!q("SHOW COLUMNS FROM web_ftm_map LIKE 'valid_from'")->fetch()) db()->exec('ALTER TABLE web_ftm_map ADD valid_from DATE NULL');
+}
+
+/**
+ * Where a PIN probably changed hands: the first scan after its last gap of $gapDays or more without scans (the PIN
+ * was idle, then someone started using it). [pin => date] for PINs with such a gap. $days = [pin => [Y-m-d, ...]] sorted.
+ */
+function ftm_pin_restarts($days, $gapDays = 180)
+{
+    $out = [];
+    foreach ($days as $pin => $list) {
+        for ($i = count($list) - 1; $i > 0; $i--) {
+            if ((strtotime($list[$i]) - strtotime($list[$i - 1])) / 86400 >= $gapDays) { $out[$pin] = $list[$i]; break; }
+        }
+    }
+    return $out;
+}
+
+/** Days with scans per FTM PIN (machine scans only), for ftm_pin_restarts(). */
+function ftm_scan_days()
+{
+    $F = ftm_db();
+    $out = [];
+    foreach (q("SELECT pin, DATE(scan_date) d FROM $F.att_log WHERE sn <> '0' AND scan_date >= '2005-01-01' GROUP BY pin, DATE(scan_date) ORDER BY pin, d") as $r) $out[$r['pin']][] = $r['d'];
+    return $out;
 }
 
 /** FTM employees: [pin, name, active] (emp_status 0 = Aktif). */
@@ -85,7 +113,7 @@ function ftm_sync($from, $to)
         $add = q("INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id)
                   SELECT CONCAT('" . FTM_SN . "', a.sn), a.scan_date, p.pegawai_pin, a.verify_mode, a.io_mode, 0, a.work_code, CONCAT('ftm:', a.att_id)
                   FROM $F.att_log a JOIN web_ftm_map m ON m.ftm_pin = a.pin JOIN pegawai p ON p.pegawai_id = m.pegawai_id
-                  WHERE a.scan_date BETWEEN ? AND ?", $range)->rowCount();
+                  WHERE a.scan_date BETWEEN ? AND ? AND (m.valid_from IS NULL OR a.scan_date >= m.valid_from)", $range)->rowCount();
         $pdo->commit();
     } catch (Exception $e) {
         $pdo->rollBack();
