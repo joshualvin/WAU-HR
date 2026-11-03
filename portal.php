@@ -642,6 +642,9 @@ if ($page === 'home'):
   </div>
   <?php $myAssets = q('SELECT * FROM web_asset WHERE pegawai_id = ? AND active = 1', [$me['id']])->fetchAll(); if ($myAssets): ?>
   <div class="p-card"><h2>Aset yang saya pakai</h2><?php foreach ($myAssets as $a): ?><div class="muted" style="padding:2px 0"><b style="color:var(--text)"><?= h($a['name']) ?></b> <?= h($a['serial']) ?> · sejak <?= h(date('d-m-Y', strtotime($a['assigned_at']))) ?></div><?php endforeach; ?></div><?php endif; ?>
+  <?php require_once __DIR__ . '/inc/files.php'; ensure_files_tables(); $shared = q('SELECT * FROM web_file WHERE shared = 1 ORDER BY category, title')->fetchAll(); if ($shared): ?>
+  <div class="p-card"><h2>Dokumen perusahaan</h2><div class="p-list"><?php foreach ($shared as $f): ?><div class="p-item"><div class="p-main"><b><?= h($f['title']) ?></b><div class="muted"><?= h(files_categories()[$f['category']] ?? $f['category']) ?> · <?= h(file_size_label($f['size'])) ?></div></div><a class="p-btn small" href="filedl.php?id=<?= (int)$f['id'] ?>">Unduh</a></div><?php endforeach; ?></div></div>
+  <?php endif; ?>
   <div class="p-card"><h2>Dokumen saya</h2>
     <div class="p-list" style="margin-bottom:10px"><?php foreach ($docs as $d): ?><div class="p-item"><div class="p-main"><b><?= h(doc_kinds()[$d['kind']] ?? $d['kind']) ?></b> <?= h($d['title']) ?>
       <?= $d['expires'] ? '<div class="muted">berlaku s/d ' . h(date('d-m-Y', strtotime($d['expires']))) . '</div>' : '' ?></div><a class="p-btn small" target="_blank" href="doc.php?id=<?= (int)$d['id'] ?>">Lihat</a></div><?php endforeach; ?>
