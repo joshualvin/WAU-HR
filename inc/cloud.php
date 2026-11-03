@@ -11,6 +11,7 @@
 // exports (Laporan → Absensi Perangkat) via cloud_import_xlsx().
 
 const CLOUD_GPS_SN = 'FIO';
+const CLOUD_DS_LIMIT = 5000;   // rows per day and machine asked from the desktop API
 
 function cloud_token()
 {
@@ -90,9 +91,9 @@ function cloud_get_attlog($cloudId, $uploadDate)
 // ---------- Fingerspot Personnel desktop API (active path, free) ----------
 // The endpoint the Fingerspot Personnel desktop app itself uses (captured from its traffic), so it needs no API SDK
 // subscription and no paid Developer API — only the free Personnel API key. Every parameter is a path segment, GET:
-//   {base}/{apikey}/{cloud_id}/{date}/{req_ts}/{token}/3/0/0   date = Y-m-d (the day the scans reached the cloud), req_ts = YmdHis,
-//   3 = comm type "web"; the server needs 8 segments and ignores the last two. token = MD5(cloud_id . date . req_ts . apikey)
-//   (confirmed with cloud.php?probe; device_last_data uses MD5(cloud_id . apikey)).
+//   {base}/{apikey}/{cloud_id}/{date}/{req_ts}/{token}/3/0/{limit}   date = Y-m-d (the day the scans reached the cloud),
+//   req_ts = YmdHis, 3 = comm type "web", 0 = offset(?), limit = max rows: 0 returns nothing, 1 one scan (confirmed with
+//   cloud.php?diag=att). token = MD5(cloud_id . date . req_ts . apikey) (confirmed with cloud.php?probe).
 // Reply {success, total, data:[{PIN, Name, "Date Time", "Log Type", "Verify Type", "Work Code", "IO Mode"}]}.
 
 /** Base of the Personnel desktop API attendance_log endpoint. */
@@ -115,8 +116,9 @@ function cloud_ds_token($cloudId, $date, $key, $now)
 }
 
 /** The request URL for one machine and day; $now = YmdHis. */
-function cloud_ds_url($cloudId, $date, $key, $now, $tail = '3/0/0')
+function cloud_ds_url($cloudId, $date, $key, $now, $tail = null)
 {
+    if ($tail === null) $tail = '3/0/' . CLOUD_DS_LIMIT;
     return cloud_ds_base() . '/' . rawurlencode($key) . '/' . rawurlencode($cloudId) . "/$date/$now/" . cloud_ds_token($cloudId, $date, $key, $now) . '/' . $tail;
 }
 
@@ -173,7 +175,7 @@ function cloud_ds_diag_att()
         if (!preg_match('/Kantor|AF2/i', $d['device_name'])) continue;
         $cid = strtoupper(trim($d['cloud_id']));
         $lines[] = "== {$d['device_name']} ($cid)";
-        foreach (['3/0/0', '3/0/1', '3/1/0', '1/0/0', '0/0/0', '3/0/' . $d['sn']] as $tail) {
+        foreach (['3/0/0', '3/0/1', '3/0/' . $d['sn'], '3/0/' . CLOUD_DS_LIMIT] as $tail) {
             $row = [];
             foreach ($days as $day) {
                 list($rows, $e) = cloud_get_attlog_ds($cid, $day, $tail);
@@ -239,12 +241,13 @@ function cloud_get_dates_ds($cloudId, $from, $to)
 }
 
 /** One desktop-API attendance_log call for a device and upload date (Y-m-d). Returns [rows, error]. */
-function cloud_get_attlog_ds($cloudId, $date, $tail = '3/0/0')
+function cloud_get_attlog_ds($cloudId, $date, $tail = null)
 {
     list($json, $err) = cloud_ds_get(cloud_ds_url($cloudId, $date, cloud_token(), date('YmdHis'), $tail));
     if ($err) return [[], $err];
     $rows = [];
     foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
+    if (count($rows) >= CLOUD_DS_LIMIT) return [$rows, 'mungkin ada scan lebih dari ' . CLOUD_DS_LIMIT . ' pada hari ini'];
     return [$rows, null];
 }
 
