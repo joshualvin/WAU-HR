@@ -357,3 +357,14 @@ body.railmini .rail .cid { display: none; }
 .cal .ev.oc { background: var(--primary-soft); color: var(--primary); display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .cal .ev.oc .x { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; padding: 0 2px; opacity: .6; }
 .cal .ev.oc .x:hover { opacity: 1; }
+
+/* Settings page: Mekari-style tab strip and a list of the pages in the chosen tab */
+.settabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.settabs a { padding: 10px 16px; color: var(--muted); font-size: 14px; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.settabs a:hover { color: var(--ink); text-decoration: none; }
+.settabs a.on { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.setlist { max-width: 760px; }
+.setrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 4px; border-top: 1px solid var(--line); color: var(--ink); }
+.setrow:hover { background: var(--band); text-decoration: none; }
+.setrow small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.setrow .chev { color: var(--muted); font-size: 20px; }

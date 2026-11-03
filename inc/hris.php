@@ -124,7 +124,7 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
     $integ = []; foreach (hris_integrations() as $l => $href) $integ[$href] = $l;
     $navItem('Integrasi', 'plug', 'cloud.php', false, $integ, null); ?>
     <hr class="sep">
-    <?php $navItem($mods['settings'][0], $mods['settings'][1], $mods['settings'][2], false, [], null); ?>
+    <?php $navItem($mods['settings'][0], $mods['settings'][1], $mods['settings'][2], $module === 'settings', [], null); ?>
     <div class="bottom"><button type="button" class="railtoggle" id="railtoggle" title="Ciutkan menu" aria-label="Ciutkan menu"><?= hris_icon('chev') ?></button>
       <span class="cid"><?= h($company) ?></span></div>
   </aside>
