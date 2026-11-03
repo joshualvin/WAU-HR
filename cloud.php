@@ -12,6 +12,12 @@ if ($me['role'] === 'admin' && get('probe') !== '') {
     exit;
 }
 
+if ($me['role'] === 'admin' && get('diag') !== '') {
+    header('Content-Type: text/plain; charset=utf-8');
+    echo implode("\n", cloud_ds_diag()) . "\n";
+    exit;
+}
+
 $devices = cloud_devices();
 $hasToken = cloud_token() !== '';
 $oldest = date('Y-m-d', strtotime('-60 days'));

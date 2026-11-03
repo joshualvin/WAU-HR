@@ -140,6 +140,30 @@ function cloud_ds_probe($cloudId, $date)
     return $out;
 }
 
+/** Diagnostic for ?diag=1: what date_list (both date orders) and attendance_log answer for each machine today, no key and no names shown. */
+function cloud_ds_diag()
+{
+    $today = date('Y-m-d');
+    $from = date('Y-m-d', strtotime('-3 days'));
+    $tomorrow = date('Y-m-d', strtotime('+1 day'));
+    $key = rawurlencode(cloud_token());
+    $lines = ["today $today"];
+    foreach (cloud_devices() as $d) {
+        $cid = strtoupper(trim($d['cloud_id']));
+        $lines[] = "== {$d['device_name']} ($cid)";
+        foreach (["$from/$today" => 'date_list from/today', "$today/$from" => 'date_list today/from', "$from/$tomorrow" => 'date_list from/tomorrow', "$today/$today" => 'date_list today/today'] as $range => $label) {
+            list($j, $e) = cloud_ds_get(cloud_ds_origin() . "/api/desktop/date_list/$key/" . rawurlencode($cid) . "/$range");
+            $lines[] = str_pad($label, 26) . ($e ? $e : implode(',', array_map(function ($r) { return isset($r['date']) ? substr($r['date'], 5) : '?'; }, isset($j['data']) ? $j['data'] : [])) . '  (' . (isset($j['data']) ? count($j['data']) : 0) . ' days)');
+        }
+        foreach ([$today, date('Y-m-d', strtotime('-1 day'))] as $day) {
+            list($rows, $e) = cloud_get_attlog_ds($cid, $day);
+            $max = $rows ? max(array_column($rows, 'scan_date')) : '';
+            $lines[] = str_pad("attendance_log $day", 26) . ($e ? $e : count($rows) . ' scans' . ($max ? ", latest $max" : ''));
+        }
+    }
+    return $lines;
+}
+
 /** Normalise one reply row to what cloud_download inserts, or null. Accepts "Verify"/"Type ID" or "Verify Type"/"Log Type". */
 function cloud_row_ds($r)
 {
