@@ -329,6 +329,8 @@ function cloud_download($from, $to, $sns = [], $gps = false, $budget = 0)
     ensure_cloud_tables();
     $started = time();
     $to = min($to, date('Y-m-d'));   // no future dates
+    // a "last download" in the future was written by a server clock that ran ahead; forget it so the days get fetched again
+    q('UPDATE device SET last_download_web = NULL WHERE last_download_web > ?', [date('Y-m-d')]);
     $known = array_flip(q('SELECT pegawai_pin FROM pegawai')->fetchAll(PDO::FETCH_COLUMN));
     $ins = db()->prepare('INSERT IGNORE INTO att_log (sn, scan_date, pin, verifymode, inoutmode, reserved, work_code, att_id) VALUES (?, ?, ?, ?, ?, 0, ?, 0)');
     $out = [];

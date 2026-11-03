@@ -25,6 +25,7 @@ if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) { echo date('Y-m-d H:i') . " pre
 
 $oldest = date('Y-m-d', strtotime('-59 days'));
 $to = date('Y-m-d');
+q('UPDATE device SET last_download_web = NULL WHERE last_download_web > ?', [$to]);   // written by a clock that ran ahead
 if (isset($argv[1])) {
     $from = date('Y-m-d', strtotime('-' . (max(1, min(60, (int)$argv[1])) - 1) . ' days'));
 } else {
