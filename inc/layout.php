@@ -144,6 +144,7 @@ function page_header($title, $active = '')
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?> · Absensi</title>
 <link rel="stylesheet" href="assets/app.css">
+<link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body class="<?= $u ? 'app' : 'login' ?>">
 <?php if ($u): ?>

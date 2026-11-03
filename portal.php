@@ -216,6 +216,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ensure_task_tables();
         if (task_set_status((int)post('id'), post('status'), $me['id'])) flash('Status tugas diperbarui.');   // only the assignee's own tasks
         redirect('portal.php');
+    } elseif ($action === 'form_submit') {
+        require_once __DIR__ . '/inc/forms.php';
+        ensure_form_tables();
+        $form = q('SELECT * FROM web_form WHERE id = ?', [(int)post('id')])->fetch();
+        if ($form) {
+            list($sent, $errs) = form_submit($form, $me['id'], isset($_POST['a']) && is_array($_POST['a']) ? $_POST['a'] : []);
+            if ($sent) { flash('Terima kasih, jawaban Anda sudah dikirim.'); redirect('portal.php'); }
+            $error = implode(' ', $errs);
+            $page = 'form';
+        }
     } elseif ($action === 'self_review') {
         ensure_talent_tables();
         $cycle = q('SELECT * FROM web_review_cycle WHERE id = ? AND status = ?', [(int)post('cycle_id'), 'open'])->fetch();
@@ -274,6 +284,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 list($pFrom, $pTo) = current_period();
 $tabs = ['home' => 'Beranda', 'shift' => 'Jadwal', 'attendance' => 'Kehadiran Saya', 'timeoff' => 'Cuti & Izin', 'overtime' => 'Lembur', 'reimburse' => 'Reimbursement', 'kasbon' => 'Kasbon', 'slip' => 'Slip Gaji', 'review' => 'Penilaian', 'profile' => 'Profil'];
+if (empty($CONFIG['use_shifts'])) unset($tabs['shift']);   // no shift work here ('use_shifts' => true in config.php brings the tab back)
 ensure_discipline_tables();
 // Tim saya for supervisors (someone has them as direct supervisor)
 ensure_approval_tables(); ensure_people_tables();
@@ -281,10 +292,10 @@ $isBoss = (bool)q('SELECT COUNT(*) FROM web_emp_profile x JOIN pegawai p ON p.pe
 if ($isBoss) $tabs = ['home' => $tabs['home'], 'team' => 'Tim saya'] + $tabs;
 // the Peringatan tab only for employees who have received one
 if (q('SELECT COUNT(*) FROM web_warning WHERE pegawai_id = ?', [$me['id']])->fetchColumn()) $tabs = array_slice($tabs, 0, -1, true) + ['warnings' => 'Peringatan'] + array_slice($tabs, -1, 1, true);
+if ($page === 'form') $tabs['form'] = 'Formulir';   // reached from the home card, not part of the tab bar
 if (!isset($tabs[$page])) $page = 'home';
 portal_header($tabs[$page], $tabs, $page, $emp);
 if ($error) echo '<div class="p-alert err">' . h($error) . '</div>';
-if (empty($CONFIG['use_shifts'])) unset($tabs['shift']);   // no shift work here ('use_shifts' => true in config.php brings the tab back)
 foreach (take_flashes() as $f) echo '<div class="p-alert ' . h($f[0]) . '">' . h($f[1]) . '</div>';
 
 // ---------- pages ----------
@@ -333,6 +344,8 @@ if ($page === 'home'):
       <form method="post" class="inline"><?= csrf_field() ?><input type="hidden" name="action" value="my_task"><input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
         <?php if ($t['status'] === 'todo'): ?><button class="p-btn small" name="status" value="doing">Mulai</button> <?php endif; ?><button class="p-btn small primary" name="status" value="done">Selesai</button></form></div>
   <?php endforeach; ?></div></div><?php endif; ?>
+  <?php require_once __DIR__ . '/inc/forms.php'; ensure_form_tables(); $openForms = forms_for_employee($me['id']);
+  if ($openForms): ?><div class="p-card"><h2>Formulir & survei</h2><div class="p-list"><?php foreach ($openForms as $fm): ?><div class="p-item"><div class="p-main"><b><?= h($fm['title']) ?></b><div class="muted"><?= h(form_kinds()[$fm['kind']]) ?><?= $fm['anonymous'] ? ' · anonim' : '' ?><?= $fm['due_date'] ? ' · isi sebelum ' . h(fmt_date($fm['due_date'])) : '' ?></div></div><a class="p-btn small primary" href="portal.php?p=form&id=<?= (int)$fm['id'] ?>">Isi</a></div><?php endforeach; ?></div></div><?php endif; ?>
   <?php if ($cal): ?><div class="p-card"><h2>Kalender 30 hari</h2><?php foreach ($cal as $c): ?><div class="muted" style="padding:2px 0"><b style="color:var(--text)"><?= h(date('d-m', strtotime($c[0]))) ?></b> · <?= h($c[2]) ?></div><?php endforeach; ?></div><?php endif; ?>
   <?php ensure_talent_tables();
   $myTasks = q('SELECT * FROM web_checklist WHERE pegawai_id = ? AND who = ? ORDER BY done_at IS NOT NULL, due_date, sort', [$me['id'], 'Karyawan'])->fetchAll();
@@ -558,6 +571,31 @@ if ($page === 'home'):
   <div class="p-list"><?php foreach ($todayRows as $r): ?><div class="p-item"><div class="p-main"><b><?= h($r['name']) ?></b><div class="muted"><?= h($r['first'] ?: '--:--') ?> – <?= h($r['last'] ?: '--:--') ?><?= $r['leave'] ? ' · ' . h(implode(', ', $r['leave'])) : '' ?></div></div><?= status_badge($r['status']) ?></div><?php endforeach; ?>
     <?php if (!$todayRows): ?><div class="p-item muted">Tidak ada data.</div><?php endif; ?></div>
 
+<?php elseif ($page === 'form'):
+    require_once __DIR__ . '/inc/forms.php'; ensure_form_tables();
+    $fm = q('SELECT * FROM web_form WHERE id = ?', [(int)(post('id') ?: get('id'))])->fetch();
+    $answered = $fm && q('SELECT COUNT(*) FROM web_form_done WHERE form_id = ? AND pegawai_id = ?', [$fm['id'], $me['id']])->fetchColumn();
+    $given = isset($_POST['a']) && is_array($_POST['a']) ? $_POST['a'] : [];
+    if (!$fm || !form_is_open($fm, date('Y-m-d'))): ?><div class="p-card"><p>Formulir ini tidak tersedia atau sudah ditutup.</p><a class="p-btn" href="portal.php">Kembali</a></div>
+    <?php elseif ($answered): ?><div class="p-card"><p>Anda sudah mengisi <b><?= h($fm['title']) ?></b>. Terima kasih.</p><a class="p-btn" href="portal.php">Kembali</a></div>
+    <?php else: ?><div class="p-card"><h2><?= h($fm['title']) ?></h2>
+      <?php if ($fm['description'] !== ''): ?><p class="muted" style="white-space:pre-line"><?= h($fm['description']) ?></p><?php endif; ?>
+      <?php if ($fm['anonymous']): ?><p class="muted"><b>Anonim.</b> Jawaban Anda tidak mencatat nama Anda; sistem hanya mencatat bahwa Anda sudah mengisi.</p><?php endif; ?>
+      <form method="post" class="p-form"><?= csrf_field() ?><input type="hidden" name="action" value="form_submit"><input type="hidden" name="id" value="<?= (int)$fm['id'] ?>">
+        <?php foreach (form_questions($fm['id']) as $fq): $qid = (int)$fq['id']; $cur = isset($given[$qid]) ? $given[$qid] : ''; $opts = form_parse_options($fq['options']); ?>
+          <div class="wide" style="margin-bottom:12px"><b><?= h($fq['label']) ?><?= $fq['required'] ? ' <span style="color:var(--bad)">*</span>' : '' ?></b>
+            <?php if ($fq['kind'] === 'text'): ?><input name="a[<?= $qid ?>]" maxlength="2000" value="<?= h(is_array($cur) ? '' : $cur) ?>">
+            <?php elseif ($fq['kind'] === 'long'): ?><textarea name="a[<?= $qid ?>]" rows="4" maxlength="2000"><?= h(is_array($cur) ? '' : $cur) ?></textarea>
+            <?php elseif ($fq['kind'] === 'number'): ?><input name="a[<?= $qid ?>]" inputmode="decimal" value="<?= h(is_array($cur) ? '' : $cur) ?>">
+            <?php elseif ($fq['kind'] === 'date'): ?><input type="date" name="a[<?= $qid ?>]" value="<?= h(is_array($cur) ? '' : $cur) ?>">
+            <?php elseif ($fq['kind'] === 'choice'): foreach ($opts as $o): ?><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="radio" name="a[<?= $qid ?>]" value="<?= h($o) ?>"<?= $cur === $o ? ' checked' : '' ?>> <?= h($o) ?></label><?php endforeach;
+            elseif ($fq['kind'] === 'multi'): foreach ($opts as $o): ?><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" name="a[<?= $qid ?>][]" value="<?= h($o) ?>"<?= is_array($cur) && in_array($o, $cur, true) ? ' checked' : '' ?>> <?= h($o) ?></label><?php endforeach;
+            elseif ($fq['kind'] === 'rating'): ?><div style="display:flex;gap:14px"><?php foreach ([1, 2, 3, 4, 5] as $n): ?><label style="display:flex;gap:4px;align-items:center;font-weight:400"><input type="radio" name="a[<?= $qid ?>]" value="<?= $n ?>"<?= (string)$cur === (string)$n ? ' checked' : '' ?>> <?= $n ?></label><?php endforeach; ?></div><div class="muted">1 = sangat kurang, 5 = sangat baik</div>
+            <?php elseif ($fq['kind'] === 'yesno'): foreach (['ya' => 'Ya', 'tidak' => 'Tidak'] as $k => $l): ?><label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="radio" name="a[<?= $qid ?>]" value="<?= $k ?>"<?= $cur === $k ? ' checked' : '' ?>> <?= $l ?></label><?php endforeach; endif; ?></div>
+        <?php endforeach; ?>
+        <div class="wide"><button class="p-btn primary">Kirim jawaban</button> <a class="p-btn" href="portal.php">Batal</a></div></form></div>
+    <?php endif; ?>
+
 <?php elseif ($page === 'warnings'):
     $warns = q('SELECT * FROM web_warning WHERE pegawai_id = ? ORDER BY issued DESC, id DESC', [$me['id']])->fetchAll(); ?>
   <div class="p-list">
@@ -692,11 +730,12 @@ function portal_header($title, $tabs, $active = '', $emp = null)
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?> · Portal Pegawai</title>
 <link rel="stylesheet" href="assets/portal.css">
+<link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 <?php if ($tabs): ?>
 <header class="p-top">
-  <div class="p-brand">Portal Pegawai</div>
+  <div class="p-brand"><img src="assets/logo.png" alt="" width="24" height="24" style="vertical-align:middle;margin-right:8px">Portal Pegawai</div>
   <nav><?php foreach ($tabs as $k => $label): ?><a href="portal.php?p=<?= $k ?>" class="<?= $k === $active ? 'on' : '' ?>"><?= h($label) ?></a><?php endforeach; ?></nav>
   <div class="p-me"><span class="p-avatar"><?= h(initials($emp['pegawai_nama'])) ?></span><a href="portal.php?p=logout">Keluar</a></div>
 </header>

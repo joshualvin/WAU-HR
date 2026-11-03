@@ -41,6 +41,7 @@ $jobs = $job ? [] : q("$openSql ORDER BY j.created_at DESC")->fetchAll();
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Karir · <?= h($company) ?></title>
 <link rel="stylesheet" href="assets/portal.css">
+<link rel="icon" type="image/png" href="assets/logo.png">
 <style>textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; min-height: 110px; } .hp { position: absolute; left: -9999px; } .job-desc { white-space: pre-line; }</style>
 </head>
 <body>

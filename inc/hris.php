@@ -36,8 +36,8 @@ function hris_modules()
         'time'     => ['Waktu', 'clock', ['timeoff' => 'Cuti & Izin', 'attendance' => 'Kehadiran', 'gps.php' => 'Scan GPS (FiO)', 'overtime' => 'Lembur', 'calendar.php' => 'Kalender', 'shifts' => 'Jadwal shift', 'oncall.php' => 'On call', 'swaps' => 'Tukar shift', 'balance' => 'Saldo cuti', 'report.php?tab=harian' => 'Laporan waktu']],
         'finance'  => ['Keuangan', 'wallet', ['payroll.php?p=reimburse' => 'Reimbursement', 'payroll.php?p=loans' => 'Kasbon', 'payroll.php?p=bonus' => 'Bonus penjualan']],
         'payroll'  => ['Penggajian', 'money', ['payroll.php?p=run' => 'Proses gaji', 'payroll.php?p=components' => 'Komponen gaji', 'taxsim.php' => 'Simulasi pajak', 'payroll.php?p=bupot' => 'Bukti potong', 'payalloc.php' => 'Alokasi biaya gaji',
-                                               'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=settle' => 'Pesangon & penyelesaian', 'payroll.php?p=slips' => 'Riwayat & slip gaji', 'payroll.php?p=settings' => 'Pengaturan gaji']],
-        'performance' => ['Produktivitas', 'star', ['tasks.php' => 'Proyek & tugas', 'talent.php?p=reviews' => 'Penilaian kinerja', 'letters.php' => 'Template surat & dokumen']],
+                                               'payroll.php?p=setup' => 'Data gaji karyawan', 'payroll.php?p=thr' => 'THR', 'payroll.php?p=settle' => 'Pesangon & penyelesaian', 'payroll.php?p=slips' => 'Riwayat & slip gaji']],
+        'performance' => ['Produktivitas', 'star', ['tasks.php' => 'Proyek & tugas', 'forms.php' => 'Formulir & survei', 'talent.php?p=reviews' => 'Penilaian kinerja', 'letters.php' => 'Template surat & dokumen']],
         'company'  => ['Perusahaan', 'building', ['company.php' => 'Pengumuman & kalender', 'company.php?p=org' => 'Struktur organisasi', 'company.php?p=assets' => 'Aset', 'notifikasi.php' => 'Notifikasi', 'files.php' => 'File', 'activity.php' => 'Log aktivitas', 'reports' => 'Laporan']],
         'settings' => ['Pengaturan', 'settings', 'settings.php'],
     ];
@@ -87,11 +87,12 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?> · HR</title>
 <link rel="stylesheet" href="assets/hris.css">
+<link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
 <header class="top">
   <button class="iconbtn only-mobile" onclick="document.body.classList.toggle('drawer')" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-  <a class="brand" href="hr.php"><span class="mark"><?= h(strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $company), 0, 3)) ?: 'HR') ?></span>
+  <a class="brand" href="hr.php"><img class="mark" src="assets/logo.png" alt="" width="32" height="32">
     <span class="brandtext"><b><?= h($company) ?></b><small>HR</small></span></a>
   <span class="module">HRIS</span>
   <span class="grow"></span>
