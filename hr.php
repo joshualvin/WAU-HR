@@ -224,7 +224,7 @@ elseif ($m === 'employees'):
     if ($ks !== '') $list = array_values(array_filter($list, function ($p) use ($emps, $ks) { $r = isset($emps[$p['pegawai_id']]) ? $emps[$p['pegawai_id']] : null; return $ks === 'none' ? !$r : $r && $r['status'] === $ks; }));
     $noStatus = 0; foreach (employees(true) as $e) if (!isset($emps[$e['pegawai_id']])) $noStatus++;
     $counts = q('SELECT pegawai_status, COUNT(*) FROM pegawai GROUP BY pegawai_status')->fetchAll(PDO::FETCH_KEY_PAIR);
-    hris_header('Daftar karyawan', 'employee', 'employees', 'Karyawan', $me['role'] === 'admin' ? '<a class="btn primary" href="employee_edit.php">+ Tambah karyawan</a>' : ''); ?>
+    hris_header('Daftar karyawan', 'employee', 'employees', 'Karyawan', $me['role'] === 'admin' ? '<a class="btn" href="startdates.php">Tanggal mulai dari scan</a> <a class="btn primary" href="employee_edit.php">+ Tambah karyawan</a>' : ''); ?>
   <div class="counters" style="grid-template-columns:repeat(4,minmax(0,1fr))">
     <?php foreach (['' => 'Semua'] + $statusNames as $k => $label): ?>
       <a class="counter<?= (string)$status === (string)$k ? ' on' : '' ?>" href="hr.php?m=employees&status=<?= $k ?>&q=<?= urlencode($search) ?>">
