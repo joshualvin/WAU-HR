@@ -122,10 +122,11 @@ function cloud_ds_probe($cloudId, $date)
     $permute(['c', 'n', 'k']);
     $permute(['c', 'd', 'k']);
     $recipes = [];
-    foreach ($perms as $p) foreach (['md5', 'sha1'] as $algo) $recipes[$algo . ' ' . implode('', $p)] = [$algo, $p];
+    foreach ($perms as $p) foreach (['md5', 'sha1'] as $algo) foreach (['', 'UPPER '] as $case) $recipes[$case . $algo . ' ' . implode('', $p)] = [$algo, $p, $case !== ''];
     $out = [];
     foreach ($recipes as $label => $r) {
         $auth = hash($r[0], implode('', array_map(function ($x) use ($parts) { return $parts[$x]; }, $r[1])));
+        if ($r[2]) $auth = strtoupper($auth);   // Indy's HashStringAsHex is upper-case
         $ch = curl_init(cloud_ds_base() . '/' . rawurlencode($cloudId) . "/$date/6/date_time/asc/json/$auth/$now");
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
         $raw = (string)curl_exec($ch);
