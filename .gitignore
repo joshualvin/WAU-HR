@@ -7,3 +7,5 @@ uploads/cv/*
 uploads/career_sync.json
 uploads/docs/*
 !uploads/docs/.gitkeep
+
+cloud_cli.log
