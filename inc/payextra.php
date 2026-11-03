@@ -22,8 +22,15 @@ function ensure_payextra_tables()
         sales_bonus BIGINT NOT NULL DEFAULT 0,
         other_bonus BIGINT NOT NULL DEFAULT 0,
         note VARCHAR(200) NOT NULL DEFAULT '',
+        sales_source VARCHAR(60) NOT NULL DEFAULT '',
         updated_by VARCHAR(50) NOT NULL DEFAULT '',
         PRIMARY KEY (period_to, pegawai_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+    if (!q("SHOW COLUMNS FROM web_bonus LIKE 'sales_source'")->fetch()) db()->exec("ALTER TABLE web_bonus ADD sales_source VARCHAR(60) NOT NULL DEFAULT ''");
+    // salesman code in WAU ERP (mastersalesman) per employee, for taking actual sales from the ERP
+    db()->exec("CREATE TABLE IF NOT EXISTS web_sales_code (
+        pegawai_id INT NOT NULL PRIMARY KEY,
+        code VARCHAR(10) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
     db()->exec("CREATE TABLE IF NOT EXISTS web_loan (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,

@@ -5,6 +5,7 @@ require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/portal.php';
 require __DIR__ . '/inc/hris.php';
 require __DIR__ . '/inc/payroll.php';
+require __DIR__ . '/inc/erp.php';
 $me = require_login('admin');
 ensure_web_tables();
 ensure_payroll_tables();
@@ -40,19 +41,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit('payroll_unpublish', $to);
         flash('Slip gaji periode ini ditarik dari Portal Pegawai.');
         redirect('payroll.php?p=slips');
-    } elseif ($action === 'bonus_save') {
+    } elseif ($action === 'bonus_save' || $action === 'bonus_erp') {
         $tiers = bonus_tiers();
         $n = 0;
+        $old = bonuses_for_period($to);
+        $erp = null;
+        if ($action === 'bonus_erp') {
+            list($erp, $err) = erp_sales($from, $to);
+            if ($err) { flash($err, 'err'); redirect('payroll.php?' . http_build_query(['p' => 'bonus', 'from' => $from, 'to' => $to])); }
+        }
+        $used = [];
         foreach (isset($_POST['b']) ? (array)$_POST['b'] : [] as $id => $v) {
+            $code = strtoupper(trim(isset($v['code']) ? $v['code'] : ''));
+            if ($code === '') q('DELETE FROM web_sales_code WHERE pegawai_id = ?', [(int)$id]);
+            else q('REPLACE INTO web_sales_code (pegawai_id, code) VALUES (?, ?)', [(int)$id, mb_substr($code, 0, 10)]);
+            $source = isset($old[$id]) ? $old[$id]['sales_source'] : '';
+            if ($erp !== null && $code !== '') {   // invoiced value of this salesman's surat jalan in the period
+                $v['sales'] = isset($erp[$code]) ? (string)$erp[$code]['invoiced'] : '0';
+                $source = 'ERP ' . date('d-m H:i') . (isset($erp[$code]) && $erp[$code]['returns'] ? ', retur ' . rupiah($erp[$code]['returns']) : '');
+                $used[$code] = true;
+            } elseif (isset($old[$id]) && isset($v['sales']) && (int)preg_replace('/\D/', '', $v['sales']) !== (int)$old[$id]['sales']) {
+                $source = 'Diisi manual';
+            }
             $num = function ($k) use ($v) { return isset($v[$k]) ? (int)preg_replace('/\D/', '', $v[$k]) : 0; };
             list($sb) = sales_bonus($num('target'), $num('sales'), $tiers);
             if (!$num('target') && !$num('sales') && !$num('other_bonus')) { q('DELETE FROM web_bonus WHERE period_to = ? AND pegawai_id = ?', [$to, (int)$id]); continue; }
-            q('REPLACE INTO web_bonus (period_to, pegawai_id, target, sales, sales_bonus, other_bonus, note, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                [$to, (int)$id, $num('target'), $num('sales'), $sb, $num('other_bonus'), mb_substr(trim(isset($v['note']) ? $v['note'] : ''), 0, 200), actor()]);
+            q('REPLACE INTO web_bonus (period_to, pegawai_id, target, sales, sales_bonus, other_bonus, note, sales_source, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$to, (int)$id, $num('target'), $num('sales'), $sb, $num('other_bonus'), mb_substr(trim(isset($v['note']) ? $v['note'] : ''), 0, 200), $source, actor()]);
             $n++;
         }
-        audit('bonus_save', "$to: $n karyawan");
+        audit($action, "$to: $n karyawan");
         flash("Bonus $n karyawan disimpan; ikut dihitung saat gaji periode ini disimpan.");
+        if ($erp !== null) {
+            $left = [];
+            foreach ($erp as $code => $s) if (!isset($used[$code]) && $s['invoiced']) $left[] = ($code === '' ? 'tanpa sales' : "$code ({$s['name']})") . ' ' . rupiah($s['invoiced']);
+            flash('Penjualan diambil dari WAU ERP (surat jalan ' . fmt_date($from) . ' – ' . fmt_date($to) . ').' . ($left ? ' Tidak dipasangkan ke karyawan: ' . implode('; ', $left) . '.' : ''), $left ? 'err' : 'ok');
+        }
         redirect('payroll.php?' . http_build_query(['p' => 'bonus', 'from' => $from, 'to' => $to]));
     } elseif ($action === 'tier_save') {
         foreach (isset($_POST['t']) ? (array)$_POST['t'] : [] as $id => $t) {
@@ -288,23 +312,27 @@ elseif ($p === 'bonus'):
     $tiers = bonus_tiers();
     $rows = bonuses_for_period($to);
     $pays = pay_data();
+    $codes = q('SELECT pegawai_id, code FROM web_sales_code')->fetchAll(PDO::FETCH_KEY_PAIR);
     $tot = 0;
     hris_header('Bonus penjualan', 'payroll', 'payroll.php?p=bonus', 'Penggajian'); ?>
   <?= $periodPicker('bonus') ?>
+  <?php if (!erp_enabled()): ?><div class="notice"><div><b>WAU ERP belum terhubung</b>Isi erp_token di config.php (sama dengan hr_api_token di secret WAU ERP) agar realisasi penjualan bisa diambil dari surat jalan.</div></div><?php endif; ?>
   <form method="post"><?= $csrf ?><input type="hidden" name="action" value="bonus_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
   <div class="tablecard"><div class="tablescroll"><table>
-    <thead><tr><th>Nama karyawan</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th>Keterangan</th></tr></thead><tbody>
+    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th>Keterangan</th></tr></thead><tbody>
     <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; if (empty($pays[$id])) continue;
-        $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => ''];
+        $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => '', 'sales_source' => ''];
         list(, $pct) = sales_bonus($v['target'], $v['sales'], $tiers); $tot += $v['sales_bonus'] + $v['other_bonus'];
         $money = function ($k) use ($v, $id) { return '<input type="text" inputmode="numeric" name="b[' . $id . '][' . $k . ']" value="' . ($v[$k] ? h(number_format($v[$k], 0, ',', '.')) : '') . '" style="width:140px;text-align:right" placeholder="0">'; }; ?>
       <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span></td>
-        <td><?= $money('target') ?></td><td><?= $money('sales') ?></td><td class="num"><?= $v['target'] ? str_replace('.', ',', $pct) . '%' : '' ?></td>
+        <td><input type="text" name="b[<?= $id ?>][code]" value="<?= h(isset($codes[$id]) ? $codes[$id] : '') ?>" maxlength="10" style="width:70px;text-transform:uppercase" placeholder="—"></td>
+        <td><?= $money('target') ?></td><td><?= $money('sales') ?><?php if ($v['sales_source'] !== ''): ?><br><small class="muted"><?= h($v['sales_source']) ?></small><?php endif; ?></td><td class="num"><?= $v['target'] ? str_replace('.', ',', $pct) . '%' : '' ?></td>
         <td class="num"><b><?= $v['sales_bonus'] ? rupiah($v['sales_bonus']) : '' ?></b></td><td><?= $money('other_bonus') ?></td>
         <td><input type="text" name="b[<?= $id ?>][note]" value="<?= h($v['note']) ?>" maxlength="200" style="width:180px"></td></tr>
     <?php endforeach; ?>
     </tbody></table></div></div>
   <div class="formfoot"><span class="muted" style="margin-right:auto">Total bonus periode ini: <b><?= rupiah($tot) ?></b>. Bonus termasuk penghasilan bruto PPh 21 bulan ini. Hanya karyawan yang punya data gaji yang tampil.</span>
+    <?php if (erp_enabled()): ?><button class="btn" name="action" value="bonus_erp" title="Isi realisasi penjualan karyawan yang punya kode sales dengan nilai surat jalan periode ini">Ambil dari ERP</button><?php endif; ?>
     <button class="btn primary">Simpan bonus</button></div></form>
   <form method="post" class="section" style="margin-top:16px"><?= $csrf ?><input type="hidden" name="action" value="tier_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
     <h2>Skema bonus penjualan</h2>

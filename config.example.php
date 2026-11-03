@@ -20,6 +20,9 @@ return [
     // Optional, printed on the bukti potong PPh 21: company NPWP and the name of the person who signs it
     'company_npwp' => '',
     'tax_signer'   => '',
+    // WAU ERP on this server, for the sales bonus: its address and the hr_api_token from its secret
+    'erp_url'   => 'http://127.0.0.1/wau-erp',
+    'erp_token' => '',
     // Careers site (cv-upload) link for Rekrutmen: its address and the HR_API_TOKEN set there
     'career_url'   => 'https://career.wautama.com',
     'career_token' => '',
