@@ -21,7 +21,10 @@ check('outside', $n[2], false);
 check('no fences', nearest_geofence(-7.2, 112.6, []), null);
 
 // ---- Personnel desktop API path ----
-check('ds base default', cloud_ds_base(), 'https://api-ds.fingerspot.io');
+check('ds url', cloud_ds_url('C2635CA0C3193536', '2026-11-03', 'KEY', '20261103120000'),
+      'https://api-ds.fingerspot.io/api/desktop/attendance_log/C2635CA0C3193536/2026-11-03/6/date_time/asc/json/' . md5('C2635CA0C31935362026-11-03' . '20261103120000KEY') . '/20261103120000');
+$d2 = cloud_row_ds(['PIN' => '2', 'Date Time' => '2020-07-25 11:11:29', 'Verify' => 3, 'Type ID' => 1]);
+check('ds row sdk names', [$d2['verify'], $d2['type_id']], [3, 1]);
 $d = cloud_row_ds(['PIN' => '1', 'Date Time' => '2020-07-25 11:11:29', 'Verify Type' => 4, 'Log Type' => 1, 'Work Code' => 7]);
 check('ds row', [$d['pin'], $d['scan_date'], $d['verify'], $d['type_id'], $d['work_code']], ['1', '2020-07-25 11:11:29', 4, 1, 7]);
 check('ds row no scan', cloud_row_ds(['PIN' => '1']), null);

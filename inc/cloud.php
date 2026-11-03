@@ -88,34 +88,40 @@ function cloud_get_attlog($cloudId, $uploadDate)
 }
 
 // ---------- Fingerspot Personnel desktop API (active path, free) ----------
-// This is the endpoint the Fingerspot Personnel desktop app itself uses to pull cloud scans, so it needs no API SDK
-// subscription and no paid Developer API — just the free "API Key untuk Fingerspot Personnel". From Downloader.exe:
-//   GET {base}/api/desktop/attendance_log?apikey=<key>&cloud_id=<id>&tgl=<Y-m-d>   (tgl = the day data reached the cloud)
-//   reply {success, total, data:[{PIN, "Date Time", "Verify Type", "Log Type", "Work Code"}]}, up to 60 days back.
+// The endpoint the Fingerspot Personnel desktop app itself uses (found in Downloader.exe), so it needs no API SDK
+// subscription and no paid Developer API — only the free "API Key untuk Fingerspot Personnel". Same signed URL as the
+// SDK, on another host (the server only matches it with exactly these 8 segments):
+//   GET https://api-ds.fingerspot.io/api/desktop/attendance_log/{cloud_id}/{upload_date}/6/date_time/asc/json/{auth}/{now}
+//   auth = MD5(cloud_id . upload_date . now . key), now = YmdHis; up to 60 days back.
 
-/** Base of the Personnel desktop API (url_server in Fingerspot Personnel). */
+/** Base of the Personnel desktop API (url_server + path in Fingerspot Personnel). */
 function cloud_ds_base()
 {
     global $CONFIG;
-    return rtrim(!empty($CONFIG['fingerspot_ds_url']) ? $CONFIG['fingerspot_ds_url'] : 'https://api-ds.fingerspot.io', '/');
+    return rtrim(!empty($CONFIG['fingerspot_ds_url']) ? $CONFIG['fingerspot_ds_url'] : 'https://api-ds.fingerspot.io/api/desktop/attendance_log', '/');
 }
 
-/** Normalise one desktop-API row to what cloud_download inserts, or null. */
+/** The signed request URL for one machine and upload day; $now = YmdHis. */
+function cloud_ds_url($cloudId, $uploadDate, $key, $now)
+{
+    return cloud_ds_base() . '/' . rawurlencode($cloudId) . "/$uploadDate/6/date_time/asc/json/" . md5($cloudId . $uploadDate . $now . $key) . "/$now";
+}
+
+/** Normalise one reply row to what cloud_download inserts, or null. Accepts "Verify"/"Type ID" or "Verify Type"/"Log Type". */
 function cloud_row_ds($r)
 {
     $pin = isset($r['PIN']) ? trim((string)$r['PIN']) : '';
     $dt = isset($r['Date Time']) ? (string)$r['Date Time'] : '';
     if ($pin === '' || !strtotime($dt)) return null;
-    return ['pin' => $pin, 'scan_date' => date('Y-m-d H:i:s', strtotime($dt)),
-            'verify' => isset($r['Verify Type']) ? (int)$r['Verify Type'] : 1, 'type_id' => isset($r['Log Type']) ? (int)$r['Log Type'] : 0,
-            'work_code' => isset($r['Work Code']) ? (int)$r['Work Code'] : 0];
+    $pick = function ($keys, $def) use ($r) { foreach ($keys as $k) if (isset($r[$k]) && is_numeric($r[$k])) return (int)$r[$k]; return $def; };
+    return ['pin' => $pin, 'scan_date' => date('Y-m-d H:i:s', strtotime($dt)), 'verify' => $pick(['Verify', 'Verify Type'], 1),
+            'type_id' => $pick(['Type ID', 'Log Type'], 0), 'work_code' => $pick(['Work Code'], 0)];
 }
 
-/** One desktop-API attendance_log call for a device and upload date (Y-m-d). Returns [rows, error]. */
+/** One desktop-API call for a device and upload date (Y-m-d). Returns [rows, error]. */
 function cloud_get_attlog_ds($cloudId, $date)
 {
-    $url = cloud_ds_base() . '/api/desktop/attendance_log?' . http_build_query(['apikey' => cloud_token(), 'cloud_id' => $cloudId, 'tgl' => $date]);
-    $ch = curl_init($url);
+    $ch = curl_init(cloud_ds_url($cloudId, $date, cloud_token(), date('YmdHis')));
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_TIMEOUT => 60, CURLOPT_HTTPHEADER => ['Accept: application/json']]);
     $raw = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -123,12 +129,10 @@ function cloud_get_attlog_ds($cloudId, $date)
     curl_close($ch);
     if ($raw === false) return [[], 'Tidak bisa terhubung ke api-ds.fingerspot.io: ' . $err];
     $json = json_decode($raw, true);
-    if (!is_array($json)) return [[], $http === 404 ? 'HTTP 404 — apikey Fingerspot Personnel salah atau belum aktif' : "HTTP $http: " . substr(strip_tags($raw), 0, 120)];
-    if (isset($json['success']) && !$json['success']) return [[], 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : 'gagal')];
+    if (!is_array($json)) return [[], "HTTP $http: " . substr(strip_tags($raw), 0, 120)];
+    if (empty($json['success'])) return [[], 'Fingerspot: ' . (isset($json['msg']) ? (string)$json['msg'] : substr($raw, 0, 100)) . ' (apikey Fingerspot Personnel salah / belum aktif?)'];
     $rows = [];
     foreach (isset($json['data']) && is_array($json['data']) ? $json['data'] : [] as $r) if ($row = cloud_row_ds($r)) $rows[] = $row;
-    // an empty day is normal, but show what the API said so a wrong parameter is visible (the key is stripped)
-    if (!$rows) return [[], 'Respon kosong: ' . substr(str_replace(cloud_token(), '***', $raw), 0, 160)];
     return [$rows, null];
 }
 
@@ -149,7 +153,7 @@ function cloud_download($from, $to, $sns = [], $gps = false)
             list($rows, $err) = cloud_get_attlog_ds($t[0], $day);
             if ($err) {
                 $res['errors'][] = "$day: $err";
-                if (preg_match('/HTTP 40|apikey|masa/i', $err)) break;   // auth problem: later days fail too
+                if (preg_match('/Access Denied|apikey|jatuh tempo|HTTP 40/i', $err)) break;   // auth problem: later days fail too
                 continue;
             }
             foreach ($rows as $r) {
