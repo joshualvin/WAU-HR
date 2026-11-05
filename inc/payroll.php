@@ -64,7 +64,8 @@ function payroll_defaults()
         'late_per_minute' => 0,                                           // company rule, rupiah per late minute
         'absent_deduct' => 1,                                             // 1 = deduct pro-rata for absent days without leave
         'ot_requires_approval' => 0,                                      // 1 = pay overtime only up to approved requests
-        'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
+        'bpjs_co_taxable' => 0,                                           // 1 = add company-paid JKK/JKM/Kesehatan to the PPh 21 gross
+        'umr' => 0,                                                      // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];
 }
@@ -320,8 +321,8 @@ function calculate_payroll($from, $to)
         $myClaims = isset($claims[$id]) ? $claims[$id] : [];
         $reimb = (int)array_sum(array_column($myClaims, 'jumlah'));
         if ($reimb) $earn['Reimbursement (' . count($myClaims) . ' klaim)'] = $reimb;
-        // gross for PPh 21 includes the company-paid JKK, JKM and BPJS Kesehatan (PP 58/2023)
-        $bruto = $earnTotal + $b['jkk'] + $b['jkm'] + $b['kes_co'];
+        // company-paid JKK, JKM and BPJS Kesehatan are only added to the PPh 21 gross when 'bpjs_co_taxable' is 1
+        $bruto = $earnTotal + ($s['bpjs_co_taxable'] ? $b['jkk'] + $b['jkm'] + $b['kes_co'] : 0);
         $iuranEmp = $b['jht_emp'] + $b['jp_emp'];
         list($tax, $taxNote) = $daily ? pph21_daily($bruto, $c['present']) : pph21($p, $bruto, $iuranEmp, $to, $id);
         // December: over-withheld tax is paid back with the salary (not income, so after the PPh 21 gross)
