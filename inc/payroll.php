@@ -72,6 +72,7 @@ function payroll_defaults()
         'dl_saturday' => 75000,                                           // Uang DL for a Saturday
         'trip_driver' => 10000,                                           // gudang: incentive per day driving as driver
         'trip_alone' => 5000,                                             // gudang: per trip delivered with only 1 kernet (kirim sendiri)
+        'npwp_surcharge' => 20,                                           // % added to PPh 21 for an employee without NPWP; 0 = off
         'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];
@@ -190,16 +191,18 @@ function overtime_pay($minutes, $hourly, $restDay)
  * THR paid in the same tax month is taxed together with the salary, minus the tax already withheld on the THR slip.
  * $thr = thr_taxed() result (looked up when null). Returns [tax, explanation].
  */
-function pph21($pay, $bruto, $iuranEmp, $periodTo, $pegawaiId, $thr = null)
+function pph21($pay, $bruto, $iuranEmp, $periodTo, $pegawaiId, $thr = null, $surcharge = 0)
 {
+    $up = 1 + $surcharge / 100;   // 20% higher for someone without NPWP
     if ($thr === null) $thr = thr_taxed($pegawaiId, $periodTo);
     if ((int)date('n', strtotime($periodTo)) !== 12) {
         $cat = ter_category($pay['ptkp']);
         $all = $bruto + $thr['month'][0];
         $rate = ter_rate($cat, $all);
         $note = "TER $cat {$rate}% × " . rupiah($all);
-        if (!$thr['month'][0]) return [(int)floor($bruto * $rate / 100), $note];
-        return [(int)max(0, floor($all * $rate / 100) - $thr['month'][1]), "$note (gaji + THR " . rupiah($thr['month'][0]) . ') − PPh THR ' . rupiah($thr['month'][1])];
+        if ($surcharge) $note .= " + $surcharge% tanpa NPWP";
+        if (!$thr['month'][0]) return [(int)round(floor($bruto * $rate / 100) * $up), $note];
+        return [(int)max(0, round(floor($all * $rate / 100) * $up) - $thr['month'][1]), "$note (gaji + THR " . rupiah($thr['month'][0]) . ') − PPh THR ' . rupiah($thr['month'][1])];
     }
     $year = substr($periodTo, 0, 4);
     $prev = ['b' => 0, 't' => 0];
@@ -215,7 +218,7 @@ function pph21($pay, $bruto, $iuranEmp, $periodTo, $pegawaiId, $thr = null)
     $biayaJabatan = min($annualBruto * 0.05, 6000000);
     $neto = $annualBruto - $biayaJabatan - $prevIuran - $iuranEmp;
     $pkp = $neto - ptkp_amount($pay['ptkp']);
-    $annual = pasal17($pkp);
+    $annual = (int)round(pasal17($pkp) * $up);
     // negative = more was withheld during the year than is due: refunded on the December payslip
     return [(int)($annual - $prev['t']), 'Desember: PPh setahun ' . rupiah($annual) . ' − dipotong sebelumnya ' . rupiah($prev['t']) . ($thr['year'][0] ? ' (termasuk THR)' : '')];
 }
@@ -270,6 +273,7 @@ function calculate_payroll($from, $to)
     $gudang = [];   // department / office ids whose name says gudang
     foreach (['pembagian2', 'pembagian3'] as $t) foreach (lookup($t) as $lid => $lname) if (stripos($lname, 'gudang') !== false) $gudang[$t][$lid] = 1;
     $dlDays = dl_days($from, $to);
+    try { $profNpwp = q("SELECT pegawai_id, npwp FROM web_emp_profile WHERE npwp <> ''")->fetchAll(PDO::FETCH_KEY_PAIR); } catch (Exception $e) { $profNpwp = []; }   // NPWP kept on the employee profile counts too
     $out = [];
     foreach ($staff as $e) {
         $id = $e['pegawai_id'];
@@ -349,7 +353,7 @@ function calculate_payroll($from, $to)
         // gross for PPh 21 includes the company-paid JKK, JKM and BPJS Kesehatan (PP 58/2023)
         $bruto = $earnTotal + $b['jkk'] + $b['jkm'] + $b['kes_co'];
         $iuranEmp = $b['jht_emp'] + $b['jp_emp'];
-        list($tax, $taxNote) = $daily ? pph21_daily($bruto, $c['present']) : pph21($p, $bruto, $iuranEmp, $to, $id);
+        list($tax, $taxNote) = $daily ? pph21_daily($bruto, $c['present']) : pph21($p, $bruto, $iuranEmp, $to, $id, null, ($p['npwp'] === '' && !isset($profNpwp[$id])) ? $s['npwp_surcharge'] : 0);
         // December: over-withheld tax is paid back with the salary (not income, so after the PPh 21 gross)
         $refund = 0;
         if ($tax < 0) { $refund = -$tax; $tax = 0; $taxNote .= ' → kelebihan dikembalikan ' . rupiah($refund); $earn['Pengembalian kelebihan PPh 21'] = $refund; }

@@ -30,6 +30,16 @@ $skipOff = $val('skip_off', $_SERVER['REQUEST_METHOD'] === 'POST' || isset($src[
 $approved = $val('approved', isset($src['preview']) || $_SERVER['REQUEST_METHOD'] === 'POST' ? '' : '1') === '1';
 
 $leaveTypes = array_filter(leave_types(), function ($k) { return !is_scan_type($k); }, ARRAY_FILTER_USE_KEY);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('action') === 'dl_delete') {   // remove DL marks of one employee in a date range
+    check_csrf();
+    ensure_dl_tables();
+    if (valid_date(post('dfrom')) && valid_date(post('dto'))) {
+        $st = q('DELETE FROM web_dl WHERE pegawai_id = ? AND tgl BETWEEN ? AND ?', [(int)post('pid'), post('dfrom'), post('dto')]);
+        audit('dl_delete', (int)post('pid') . ' ' . post('dfrom') . '..' . post('dto') . ' ' . $st->rowCount() . ' hari');
+        flash('Tanda dinas luar dihapus: ' . $st->rowCount() . ' hari.');
+    }
+    redirect('quick.php');
+}
 $error = '';
 if (isset($src['preview']) || $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$picked) $error = 'Pilih minimal satu pegawai.';
@@ -194,6 +204,22 @@ page_header('Input Cepat', 'quick.php');
 </div>
 </form>
 
+<?php ensure_dl_tables();
+$dlList = [];
+foreach (q('SELECT d.pegawai_id, p.pegawai_nama, d.tgl FROM web_dl d JOIN pegawai p ON p.pegawai_id = d.pegawai_id WHERE d.tgl >= ? ORDER BY p.pegawai_nama, d.tgl', [date('Y-m-d', strtotime('-62 days'))]) as $r) $dlList[$r['pegawai_id']]['name'] = $r['pegawai_nama'] ?: '';
+foreach (q('SELECT pegawai_id, tgl FROM web_dl WHERE tgl >= ? ORDER BY tgl', [date('Y-m-d', strtotime('-62 days'))]) as $r) $dlList[$r['pegawai_id']]['dates'][] = $r['tgl']; ?>
+<?php if ($dlList): ?>
+<div class="card" style="margin-top:12px">
+  <h2>Hari dinas luar yang sudah ditandai (62 hari terakhir)</h2>
+  <table><tr><th>Pegawai</th><th>Hari</th><th>Tanggal</th><th>Hapus tanda DL</th></tr>
+  <?php foreach ($dlList as $pid => $d): ?>
+    <tr><td><b><?= h($d['name']) ?></b></td><td><?= count($d['dates']) ?></td><td style="white-space:normal"><?= h(dl_ranges($d['dates'])) ?></td>
+      <td><form method="post" class="inline" onsubmit="return confirm('Hapus tanda dinas luar pada rentang ini?')"><?= csrf_field() ?><input type="hidden" name="action" value="dl_delete"><input type="hidden" name="pid" value="<?= (int)$pid ?>">
+        <input type="date" name="dfrom" value="<?= h($d['dates'][0]) ?>"> s/d <input type="date" name="dto" value="<?= h(end($d['dates'])) ?>"> <button class="btn small">Hapus</button></form></td></tr>
+  <?php endforeach; ?></table>
+  <p class="muted">Menghapus tanda hanya menghilangkan Uang DL; scan yang sudah ditambahkan tidak ikut terhapus.</p>
+</div>
+<?php endif; ?>
 <?php if ($plan !== null):
     $nIn = count(array_filter($plan, function ($p) { return $p['in']; }));
     $nOut = count(array_filter($plan, function ($p) { return $p['out']; }));

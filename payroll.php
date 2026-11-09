@@ -761,6 +761,7 @@ else:
                                 'dl_saturday' => 'Uang DL hari Sabtu (Rp)',
                                 'trip_driver' => 'Gudang: insentif per hari menyetir sebagai driver (Rp)',
                                 'trip_alone' => 'Gudang: insentif per trip kirim sendiri, hanya dengan 1 kernet (Rp)',
+                                'npwp_surcharge' => 'Tambahan PPh 21 untuk karyawan tanpa NPWP (%; 0 = tidak ada)',
                                 'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)',
                                 'umr' => 'UMR/UMK daerah (Rp / bulan, 0 = tidak dicek): gaji pokok + tunjangan tetap di bawahnya diberi tanda di Data gaji karyawan',
                                 'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],
