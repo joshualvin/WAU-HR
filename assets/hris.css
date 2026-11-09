@@ -186,6 +186,7 @@ input[type="file"] { max-width: 100%; }
 .widget h2 { margin: 0; font-size: 15px; }
 .widget .wfoot { border-top: 1px solid var(--line); padding: 12px 22px; font-size: 13px; color: var(--muted); }
 .stack { display: flex; height: 12px; border-radius: 99px; overflow: hidden; background: var(--line); }
+form.stack { display: grid; gap: 12px; height: auto; overflow: visible; background: none; border-radius: 0; }   /* forms use .stack as a vertical layout; div.stack is the progress bar */
 .stack i { display: block; height: 100%; }
 .scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--faint); }
 .kv { display: grid; gap: 8px; font-size: 13px; }
