@@ -126,6 +126,9 @@ elseif ($p === 'checklist'):
     $emp = employee($id);
     if (!$emp) redirect('talent.php');
     $tasks = q('SELECT * FROM web_checklist WHERE pegawai_id = ? AND type = ? ORDER BY sort, due_date, id', [$id, $type])->fetchAll();
+    require_once __DIR__ . '/inc/people.php';
+    ensure_people_tables();
+    $ctpl = q("SELECT id FROM web_letter_tpl WHERE code = 'PKWTT' ORDER BY id LIMIT 1")->fetchColumn();   // contract template: linked from the contract task
     hris_header($types[$type] . ' · ' . $emp['pegawai_nama'], 'employee', 'talent.php?p=onboarding&t=' . $type, '<a href="talent.php">On/offboarding</a>',
         '<a class="btn" href="hr.php?m=employee&id=' . $id . '">Profil karyawan</a>'); ?>
   <?php if (!$tasks): ?>
@@ -139,7 +142,7 @@ elseif ($p === 'checklist'):
     <?php foreach ($tasks as $t): $late = !$t['done_at'] && $t['due_date'] && $t['due_date'] < date('Y-m-d'); ?>
       <tr><td><form method="post" class="inline"><?= $csrf ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$t['id'] ?>"><input type="hidden" name="back" value="<?= $back ?>">
           <input type="checkbox" <?= $t['done_at'] ? 'checked' : '' ?> onchange="this.form.submit()" aria-label="Selesai"></form></td>
-        <td style="white-space:normal;<?= $t['done_at'] ? 'text-decoration:line-through;color:var(--muted)' : '' ?>"><?= h($t['item']) ?></td>
+        <td style="white-space:normal;<?= $t['done_at'] ? 'text-decoration:line-through;color:var(--muted)' : '' ?>"><?= h($t['item']) ?><?php if ($type === 'onboarding' && $ctpl && !$t['done_at'] && stripos($t['item'], 'kontrak') !== false): ?> <a class="btn small" href="letters.php?<?= h(http_build_query(['p' => 'make', 'tpl_id' => $ctpl, 'pegawai_id' => $id, 'issued' => date('Y-m-d')])) ?>">Buat kontrak (PKWTT + NDA)</a><?php endif; ?></td>
         <td><span class="pill <?= $t['who'] === 'Karyawan' ? 'off' : ($t['who'] === 'Atasan' ? 'warn' : 'grey') ?>"><?= h($t['who']) ?></span></td>
         <td class="<?= $late ? 'red' : '' ?>"><?= $t['due_date'] ? h(fmt_date($t['due_date'])) : '' ?></td>
         <td class="muted"><?= $t['done_at'] ? h(date('d-m-Y', strtotime($t['done_at']))) . ' · ' . h($t['done_by']) : '' ?></td>

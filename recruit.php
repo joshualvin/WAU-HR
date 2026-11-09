@@ -216,7 +216,13 @@ elseif ($p === 'candidate'):
       <?php if ($c['cover']): ?><h2 style="margin-top:14px">Surat lamaran</h2><div style="white-space:pre-line"><?= h($c['cover']) ?></div><?php endif; ?>
       <?php if (!$c['cv_file'] && !$c['cv_ext']): ?><p class="muted">Tidak ada CV.</p><?php endif; ?></div>
     <div class="card"><h2>Seleksi</h2>
-      <?php if ($hired): ?><p class="muted">Kandidat sudah diterima menjadi karyawan.</p><?php else: ?>
+      <?php if ($hired): ?><p class="muted">Kandidat sudah diterima menjadi karyawan.</p>
+        <?php require_once __DIR__ . '/inc/people.php'; ensure_people_tables();
+        $ctpl = q("SELECT id FROM web_letter_tpl WHERE code = 'PKWTT' ORDER BY id LIMIT 1")->fetchColumn();
+        if ($ctpl && $c['pegawai_id'] && employment_from_text($j['employment']) === 'tetap'): ?>
+          <p><a class="btn primary" href="letters.php?<?= h(http_build_query(['p' => 'make', 'tpl_id' => $ctpl, 'pegawai_id' => $c['pegawai_id'], 'issued' => date('Y-m-d')])) ?>">Buat kontrak kerja (PKWTT + NDA)</a></p>
+          <p class="muted">Lengkapi dulu NIK dan alamat karyawan agar terisi di kontrak. Gaji, jam kerja dan nomor diisi di surat sebelum dicetak.</p><?php endif; ?>
+      <?php else: ?>
       <form method="post" class="form"><?= $csrf ?><input type="hidden" name="action" value="cand_update"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
         <label class="field"><span>Lowongan</span><select name="job_id"><option value="0">Lamaran umum (tanpa lowongan)</option>
           <?php foreach ($allJobs as $o): ?><option value="<?= (int)$o['id'] ?>"<?= (int)$c['job_id'] === (int)$o['id'] ? ' selected' : '' ?>><?= h($o['title']) ?><?= $o['status'] === 'open' ? '' : ' (ditutup)' ?></option><?php endforeach; ?></select></label>
