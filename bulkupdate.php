@@ -55,7 +55,7 @@ $shown = $plan ?: null;
 
 hris_header('Update data massal', 'employee', 'bulkupdate.php', 'Karyawan', '<a class="btn" href="bulkupdate.php?csv=1">Unduh data karyawan (CSV)</a>'); ?>
   <div class="row">
-    <div class="card" style="flex:1 1 360px">
+    <div class="card" style="flex:1 1 min(360px,100%)">
       <h2>1. Unduh, ubah, unggah</h2>
       <ol style="margin:0 0 12px;padding-left:20px;display:grid;gap:6px">
         <li>Klik <b>Unduh data karyawan (CSV)</b> di kanan atas, buka di Excel atau Google Sheets.</li>
@@ -66,7 +66,7 @@ hris_header('Update data massal', 'employee', 'bulkupdate.php', 'Karyawan', '<a 
         <input type="file" name="file" accept=".csv,text/csv" required>
         <div><button class="btn primary">Periksa perubahan</button></div></form>
     </div>
-    <div class="card" style="flex:1 1 360px">
+    <div class="card" style="flex:1 1 min(360px,100%)">
       <h2>Kolom yang dikenali</h2>
       <p class="muted" style="margin-top:0"><?= h(implode(' · ', array_map(function ($c) { return $c[0]; }, bulk_columns()))) ?></p>
       <p class="muted">Tanggal: 31-12-2026 atau 2026-12-31. Jenis kelamin: L / P. Jabatan, Departemen, Kantor, Agama, Pendidikan dan Status perkawinan harus sama dengan daftar yang ada. NIK dan No. KK 16 angka (format kolom sebagai <b>Teks</b> di Excel agar angkanya tidak berubah).

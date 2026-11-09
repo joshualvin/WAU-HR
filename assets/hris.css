@@ -80,8 +80,9 @@ main { flex: 1; min-width: 0; outline: none; }
 
 /* page frame */
 .band { background: var(--band); padding-block: 18px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
-.band h1 { margin: 0; font-size: 20px; font-weight: 600; flex: 1; min-width: 0; text-wrap: balance; }
+.band h1 { margin: 0; font-size: 20px; font-weight: 600; flex: 1 1 200px; min-width: 0; text-wrap: balance; }
 .crumb { font-size: 12px; display: block; margin-bottom: 2px; font-weight: 400; }
+.content > * { min-width: 0; }   /* grid children may shrink below their content, so wide cards and tables do not push the page sideways */
 .content { padding-block: 18px 48px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px)); display: grid; gap: 16px; }
 .btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 7px 14px; font-weight: 500; font-size: 13px; white-space: nowrap; }
 .btn:hover { border-color: var(--faint); text-decoration: none; }
@@ -163,6 +164,9 @@ tbody tr:hover td.actions { background: #fafbfc; }
 .empty strong { color: var(--ink); font-weight: 600; font-size: 14px; }
 
 /* cards (home) */
+.row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.row > .card { flex: 1 1 min(320px, 100%); }
+input[type="file"] { max-width: 100%; }
 .card { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 20px 24px; min-width: 0; }
 .card h2 { margin: 0 0 14px; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .card h2 .side { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--muted); }
