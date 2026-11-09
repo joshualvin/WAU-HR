@@ -164,7 +164,7 @@ function career_parse_date($v)
 {
     $v = trim((string)$v);
     if ($v === '') return null;
-    if (is_numeric($v) && $v > 30000 && $v < 80000) return (int)round(((float)$v - 25569) * 86400);   // spreadsheet serial date
+    if (is_numeric($v) && $v > 30000 && $v < 80000) return strtotime(gmdate('Y-m-d H:i:s', (int)round(((float)$v - 25569) * 86400)));   // spreadsheet serial date; the sheet's clock time, not UTC
     if (preg_match('#^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[ ,T]+(\d{1,2})[:.](\d{2}))?#', $v, $m) && checkdate((int)$m[2], (int)$m[1], (int)$m[3]))
         return mktime(isset($m[4]) ? (int)$m[4] : 12, isset($m[5]) ? (int)$m[5] : 0, 0, (int)$m[2], (int)$m[1], (int)$m[3]);
     $t = strtotime($v);
