@@ -11,6 +11,7 @@ require_once __DIR__ . '/claims.php';
 require_once __DIR__ . '/payextra.php';
 require_once __DIR__ . '/paycomp.php';
 require_once __DIR__ . '/employment.php';
+require_once __DIR__ . '/dl.php';
 
 function ensure_payroll_tables()
 {
@@ -32,6 +33,7 @@ function ensure_payroll_tables()
     // daily wage for harian lepas (added later)
     if (!q("SHOW COLUMNS FROM web_pay_emp LIKE 'upah_harian'")->fetch()) db()->exec('ALTER TABLE web_pay_emp ADD upah_harian BIGINT NOT NULL DEFAULT 0');
     ensure_employment_tables();
+    ensure_dl_tables();
     db()->exec("CREATE TABLE IF NOT EXISTS web_pay_setting (
         k VARCHAR(40) NOT NULL PRIMARY KEY,
         v VARCHAR(100) NOT NULL
@@ -66,6 +68,8 @@ function payroll_defaults()
         'ot_requires_approval' => 0,                                      // 1 = pay overtime only up to approved requests
         'attend_bonus_office' => 200000,                                  // incentive for a month with 0 absent days; 0 = off
         'attend_bonus_gudang' => 100000,                                  // same for gudang staff (department or office name contains "gudang")
+        'dl_weekday' => 125000,                                           // Uang DL per dinas luar day (marked on Input Cepat)
+        'dl_saturday' => 112500,                                          // Uang DL for a Saturday
         'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];
@@ -263,6 +267,7 @@ function calculate_payroll($from, $to)
                 WHERE (pegawai_status = 1 OR tgl_resign >= ?) AND (tgl_mulai_kerja IS NULL OR tgl_mulai_kerja <= ?) ORDER BY pegawai_nama', [$from, $to])->fetchAll();
     $gudang = [];   // department / office ids whose name says gudang
     foreach (['pembagian2', 'pembagian3'] as $t) foreach (lookup($t) as $lid => $lname) if (stripos($lname, 'gudang') !== false) $gudang[$t][$lid] = 1;
+    $dlDays = dl_days($from, $to);
     $out = [];
     foreach ($staff as $e) {
         $id = $e['pegawai_id'];
@@ -315,6 +320,7 @@ function calculate_payroll($from, $to)
             if ($dfn['kind'] === 'earning') $earn[$label] = (int)$val; else $compDeduct[$label] = (int)$val;
         }
         $earn['Lembur'] = $c['ot_pay'];
+        if (!$daily && !empty($dlDays[$id])) { list($dlAmt, $dlWk, $dlSat) = dl_pay($dlDays[$id], $s); $earn["Uang DL ($dlWk hari" . ($dlSat ? " + $dlSat Sabtu" : '') . ')'] = $dlAmt; }
         $isGudang = isset($gudang['pembagian2'][$e['pembagian2_id']]) || isset($gudang['pembagian3'][$e['pembagian3_id']]);
         if (!$daily) $earn['Insentif kehadiran (0 hari tidak hadir)'] = attendance_incentive($c['absent'], $c['present'], $isGudang, $s);
         if (isset($bonuses[$id])) {

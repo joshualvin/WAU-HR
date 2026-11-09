@@ -4,6 +4,7 @@
 // at the employee's scheduled times, or a leave entry such as Izin dinas.
 require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/layout.php';
+require_once __DIR__ . '/inc/dl.php';
 require_login();
 
 $src = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
@@ -24,6 +25,7 @@ $tOut = $val('t_out', '16:00');
 $jenisLeave = (int)$val('jenis', 70);            // 70 = Izin dinas (Izin keperluan kantor)
 $kat = $val('kat', '');
 $note = $val('note', '');
+$dl = $val('dl', '') === '1' && $mode === 'scan';   // mark the days as dinas luar: earns Uang DL in payroll
 $skipOff = $val('skip_off', $_SERVER['REQUEST_METHOD'] === 'POST' || isset($src['preview']) ? '' : '1') === '1';
 $approved = $val('approved', isset($src['preview']) || $_SERVER['REQUEST_METHOD'] === 'POST' ? '' : '1') === '1';
 
@@ -105,8 +107,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $plan !== null) {
     $katId = $kat !== '' ? (int)$kat : 0;
     $made = 0;
     $errors = [];
+    if ($dl) ensure_dl_tables();
     foreach ($plan as $p) {
         $r = $p['r'];
+        if ($dl && !($r['off'] && $skipOff)) dl_mark($r['pegawai_id'], $r['date']);
         if ($p['leave']) {
             q('INSERT INTO izin (pegawai_id, izin_urutan, izin_tgl_pengajuan, izin_tgl, izin_jenis_id, izin_catatan, izin_status,
                                  cuti_n_id, izin_ket_lain, izin_noscan_time, kat_izin_id, ket_status)
@@ -168,6 +172,7 @@ page_header('Input Cepat', 'quick.php');
         <label class="check"><input type="radio" name="times" value="fixed" <?= $times === 'fixed' ? 'checked' : '' ?> onchange="sync()"> Jam tetap:</label>
         <div class="grid2" id="fixedTimes"><label>Masuk <input type="time" name="t_in" value="<?= h(substr($tIn, 0, 5)) ?>"></label><label>Pulang <input type="time" name="t_out" value="<?= h(substr($tOut, 0, 5)) ?>"></label></div>
         <span class="muted">Scan yang sudah ada tidak diubah; hanya yang kurang yang ditambah.</span>
+        <label class="check"><input type="checkbox" name="dl" value="1" <?= $dl ? 'checked' : '' ?>> <b>Dinas luar kota</b>: hitung Uang DL di gaji (kosongkan jika bekerja di gudang / tempat lain)</label>
       </div>
       <label class="check"><input type="radio" name="mode" value="noscan" <?= $mode === 'noscan' ? 'checked' : '' ?> onchange="sync()"> <b>Tidak scan</b> (lupa scan):</label>
       <div id="noscanOpts" style="padding-left:24px;display:flex;flex-direction:column;gap:6px">

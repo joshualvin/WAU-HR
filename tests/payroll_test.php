@@ -98,4 +98,6 @@ check('incentive head office', attendance_incentive(0, 20, false, $ai), 200000);
 check('incentive gudang', attendance_incentive(0, 20, true, $ai), 100000);
 check('no incentive with an absent day', attendance_incentive(1, 19, false, $ai), 0);
 check('no incentive without any day present', attendance_incentive(0, 0, false, $ai), 0);
+require_once __DIR__ . '/../inc/dl.php';
+check('DL: 15 weekdays + 2 Saturdays', dl_pay(['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-10'], $ai), [125000 * 2 + 112500 * 2, 2, 2]);
 echo "payroll_test: $ok checks passed\n";

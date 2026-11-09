@@ -734,6 +734,8 @@ else:
                                 'absent_deduct' => 'Potong gaji hari tidak hadir tanpa izin (1 = ya, 0 = tidak)',
                                 'attend_bonus_office' => 'Insentif kehadiran kantor pusat (Rp, bulan tanpa hari tidak hadir; 0 = tidak ada)',
                                 'attend_bonus_gudang' => 'Insentif kehadiran gudang (Rp; nama departemen/kantor memuat "gudang")',
+                                'dl_weekday' => 'Uang DL per hari dinas luar (Rp; ditandai di Input Cepat)',
+                                'dl_saturday' => 'Uang DL hari Sabtu (Rp)',
                                 'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)',
                                 'umr' => 'UMR/UMK daerah (Rp / bulan, 0 = tidak dicek): gaji pokok + tunjangan tetap di bawahnya diberi tanda di Data gaji karyawan',
                                 'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],
