@@ -39,6 +39,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash($action === 'rb_approve' ? 'Klaim disetujui; dibayar bersama gaji periode berikutnya.' : 'Klaim ditolak.');
         }
         redirect(safe_back(post('back'), 'payroll.php?p=reimburse'));
+    } elseif ($action === 'ytd_save') {   // Jan-Nov totals before the app, for the December annual PPh 21
+        $yr = (int)post('year');
+        $n = 0;
+        foreach (isset($_POST['y']) ? (array)$_POST['y'] : [] as $id => $v) {
+            $num = function ($k) use ($v) { return isset($v[$k]) ? (int)preg_replace('/\D/', '', $v[$k]) : 0; };
+            if (!$num('months') && !$num('bruto') && !$num('iuran') && !$num('pph')) { q('DELETE FROM web_pph_open WHERE year = ? AND pegawai_id = ?', [$yr, (int)$id]); continue; }
+            q('REPLACE INTO web_pph_open (year, pegawai_id, months, bruto, iuran, pph) VALUES (?, ?, ?, ?, ?, ?)', [$yr, (int)$id, min(11, $num('months')), $num('bruto'), $num('iuran'), $num('pph')]);
+            $n++;
+        }
+        audit('ytd_save', "$yr: $n karyawan");
+        flash("Saldo awal PPh 21 $yr untuk $n karyawan disimpan.");
+        redirect('payroll.php?p=ytd&year=' . $yr);
     } elseif ($action === 'rb_add') {   // HR enters an approved claim for an employee (e.g. bensin for errands)
         $amt = (int)preg_replace('/\D/', '', post('jumlah'));
         $emp = q('SELECT pegawai_id, pegawai_nama FROM pegawai WHERE pegawai_id = ?', [(int)post('pegawai_id')])->fetch();
@@ -424,6 +436,24 @@ elseif ($p === 'reimburse'):
     <?php endforeach; ?>
     </tbody></table></div><?php if (!$rows): ?><div class="empty"><strong>Tidak ada klaim</strong>Karyawan mengirim klaim di Portal Pegawai.</div><?php endif; ?></div>
   <p class="muted">Klaim yang disetujui ikut dibayar saat gaji periode berikutnya disimpan, sebagai pendapatan di luar penghasilan bruto PPh 21.</p>
+<?php
+// ======================================================================= Saldo awal PPh 21
+elseif ($p === 'ytd'):
+    $yr = (int)get('year', date('Y'));
+    $pays = pay_data();
+    $open = q('SELECT * FROM web_pph_open WHERE year = ?', [$yr])->fetchAll(PDO::FETCH_UNIQUE);
+    hris_header('Saldo awal PPh 21', 'payroll', 'payroll.php?p=ytd', 'Penggajian'); ?>
+  <form method="get" class="toolbar"><input type="hidden" name="p" value="ytd"><label>Tahun <input type="number" name="year" value="<?= $yr ?>" style="width:90px"></label><button class="btn">Tampilkan</button></form>
+  <p class="muted">Isi total Januari sampai November yang <b>belum tercatat sebagai slip di aplikasi</b> (mis. dari file Excel). Slip yang sudah disimpan di aplikasi ikut dihitung sendiri, jadi jangan isi bulan yang sama dua kali. Dipakai pada periode Desember untuk PPh 21 setahun.</p>
+  <form method="post"><?= $csrf ?><input type="hidden" name="action" value="ytd_save"><input type="hidden" name="year" value="<?= $yr ?>">
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Nama karyawan</th><th>Jumlah bulan (1-11)</th><th>Penghasilan bruto Jan-Nov (Rp)</th><th>Iuran pensiun/JHT karyawan Jan-Nov (Rp)</th><th>PPh 21 sudah dipotong Jan-Nov (Rp)</th></tr></thead><tbody>
+    <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; if (empty($pays[$id])) continue; $o = isset($open[$id]) ? $open[$id] : ['months' => '', 'bruto' => '', 'iuran' => '', 'pph' => '']; ?>
+      <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span></td>
+        <?php foreach (['months' => 70, 'bruto' => 140, 'iuran' => 120, 'pph' => 120] as $k => $w): ?>
+        <td><input type="text" inputmode="numeric" name="y[<?= $id ?>][<?= $k ?>]" value="<?= $o[$k] !== '' && $o[$k] !== null ? h(number_format($o[$k], 0, ',', '.')) : '' ?>" style="width:<?= $w ?>px"></td><?php endforeach; ?></tr>
+    <?php endforeach; ?></tbody></table></div></div>
+  <div class="formfoot"><button class="btn primary">Simpan</button></div></form>
 <?php
 // ======================================================================= Bonus penjualan
 elseif ($p === 'bonus'):

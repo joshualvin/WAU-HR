@@ -34,6 +34,11 @@ function ensure_payroll_tables()
     if (!q("SHOW COLUMNS FROM web_pay_emp LIKE 'upah_harian'")->fetch()) db()->exec('ALTER TABLE web_pay_emp ADD upah_harian BIGINT NOT NULL DEFAULT 0');
     ensure_employment_tables();
     ensure_dl_tables();
+    // Jan-Nov totals brought in from before the app was used (or kept elsewhere): feed the December annual PPh 21
+    db()->exec("CREATE TABLE IF NOT EXISTS web_pph_open (
+        year SMALLINT NOT NULL, pegawai_id INT NOT NULL, months TINYINT NOT NULL DEFAULT 0, bruto BIGINT NOT NULL DEFAULT 0,
+        iuran BIGINT NOT NULL DEFAULT 0, pph BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (year, pegawai_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
     db()->exec("CREATE TABLE IF NOT EXISTS web_pay_setting (
         k VARCHAR(40) NOT NULL PRIMARY KEY,
         v VARCHAR(100) NOT NULL
@@ -185,6 +190,13 @@ function overtime_pay($minutes, $hourly, $restDay)
     return (int)round($mult * $hourly);
 }
 
+/** Annual PPh 21 (Pasal 17) on a year's gross: biaya jabatan 5% up to Rp500.000 a month worked, minus pension contributions and PTKP. */
+function pph_annual($annualBruto, $iuran, $ptkp, $months, $up = 1)
+{
+    $neto = $annualBruto - min($annualBruto * 0.05, 500000 * max(1, $months)) - $iuran;
+    return (int)round(pasal17($neto - ptkp_amount($ptkp)) * $up);
+}
+
 /**
  * Monthly PPh 21 withheld. TER on the month's gross for January-November; in the last period of the year
  * (period ending in December) the annual Pasal 17 tax minus what was already withheld in earlier saved periods.
@@ -207,20 +219,21 @@ function pph21($pay, $bruto, $iuranEmp, $periodTo, $pegawaiId, $thr = null, $sur
     $year = substr($periodTo, 0, 4);
     $prev = ['b' => 0, 't' => 0];
     $prevIuran = 0;
+    $slips = 0;
     foreach (q('SELECT bruto, pph21, detail FROM web_payslip WHERE pegawai_id = ? AND period_to BETWEEN ? AND ?', [$pegawaiId, "$year-01-01", "$year-11-30"]) as $row) {
         $l = json_decode($row['detail'], true);
         $prev['b'] += $row['bruto'];
         $prev['t'] += $row['pph21'];
         $prevIuran += isset($l['iuran_pensiun']) ? $l['iuran_pensiun'] : 0;
+        $slips++;
     }
+    $open = q('SELECT * FROM web_pph_open WHERE year = ? AND pegawai_id = ?', [$year, $pegawaiId])->fetch();   // totals from before the app
+    if ($open) { $prev['b'] += $open['bruto']; $prev['t'] += $open['pph']; $prevIuran += $open['iuran']; $slips += $open['months']; }
     $prev['t'] += $thr['year'][1];
     $annualBruto = $prev['b'] + $bruto + $thr['year'][0];
-    $biayaJabatan = min($annualBruto * 0.05, 6000000);
-    $neto = $annualBruto - $biayaJabatan - $prevIuran - $iuranEmp;
-    $pkp = $neto - ptkp_amount($pay['ptkp']);
-    $annual = (int)round(pasal17($pkp) * $up);
+    $annual = pph_annual($annualBruto, $prevIuran + $iuranEmp, $pay['ptkp'], $slips + 1, $up);
     // negative = more was withheld during the year than is due: refunded on the December payslip
-    return [(int)($annual - $prev['t']), 'Desember: PPh setahun ' . rupiah($annual) . ' − dipotong sebelumnya ' . rupiah($prev['t']) . ($thr['year'][0] ? ' (termasuk THR)' : '')];
+    return [(int)($annual - $prev['t']), 'Desember: PPh setahun ' . rupiah($annual) . ' − dipotong sebelumnya ' . rupiah($prev['t']) . ($thr['year'][0] ? ' (termasuk THR)' : '') . ($slips < 11 ? ' — hanya ' . $slips . ' bulan sebelumnya tercatat, isi Saldo awal PPh 21 bila kurang' : '')];
 }
 
 /**
