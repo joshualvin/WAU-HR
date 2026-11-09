@@ -240,7 +240,7 @@ foreach (q('SELECT pegawai_id, tgl FROM web_dl WHERE tgl >= ? ORDER BY tgl', [da
     </form>
   </div>
   <p class="muted"><?= $mode === 'scan' ? "$nIn masuk dan $nOut pulang" : ($mode === 'noscan' ? ($nIn + $nOut) . ' tidak scan' : "$nLeave hari izin") ?> <?= $nDl ? "· $nDl hari ditandai dinas luar " : '' ?>untuk <?= count($picked) ?> pegawai, <?= h(fmt_date($from)) ?> – <?= h(fmt_date($to)) ?>.</p>
-  <div class="table-wrap"><table>
+  <div class="table-wrap" style="max-height:none"><table>
     <tr><th>Pegawai</th><th>Tanggal</th><th>Scan saat ini</th><th>Akan ditambah</th></tr>
     <?php foreach ($plan as $p): $r = $p['r']; ?>
       <tr style="<?= $p['skip'] ? 'opacity:.55' : '' ?>">
