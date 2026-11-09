@@ -108,7 +108,9 @@ function career_sync($applicants = true)
     foreach (q('SELECT id, title FROM web_job') as $j) $jobs[mb_strtolower($j['title'])] = (int)$j['id'];
     $known = q('SELECT ext_id, ai_score FROM web_candidate WHERE ext_id IS NOT NULL')->fetchAll(PDO::FETCH_KEY_PAIR);
     $added = 0;
+    $dateSamples = [];   // first few raw Submitted cells with how they were read, shown in the result
     foreach ($res['applicants'] as $a) {
+        if (count($dateSamples) < 3) { $pt = career_parse_date($a['submitted']); $dateSamples[] = "'" . mb_substr($a['submitted'], 0, 30) . "' → " . ($pt ? date('d-m-Y', $pt) : 'tidak terbaca'); }
         $note = career_ai_note($a);
         if (array_key_exists($a['id'], $known)) {
             $ts = career_parse_date($a['submitted']);   // an earlier import may have stored the import day instead of the day the CV was sent
@@ -125,7 +127,7 @@ function career_sync($applicants = true)
              $a['matchScore'] === null ? null : (int)$a['matchScore'], $note, $at, $at]);
         $added++;
     }
-    return career_done($msg . "; $added pelamar baru", null);
+    return career_done($msg . "; $added pelamar baru. Contoh tanggal lamaran dari sheet: " . implode(' | ', $dateSamples), null);
 }
 
 function career_done($msg, $err)
