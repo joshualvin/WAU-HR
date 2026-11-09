@@ -18,6 +18,27 @@ $jobSql = 'SELECT j.*, p1.pembagian1_nama jab, COALESCE(p2.pembagian2_nama, j.de
            LEFT JOIN pembagian1 p1 ON p1.pembagian1_id = j.pembagian1_id LEFT JOIN pembagian2 p2 ON p2.pembagian2_id = j.pembagian2_id
            LEFT JOIN pembagian3 p3 ON p3.pembagian3_id = j.pembagian3_id';
 
+// ---------- printable offer letter for a candidate (template OFFER, filled from the candidate and the job) ----------
+if (get('offer') !== '') {
+    require_once __DIR__ . '/inc/people.php';
+    ensure_people_tables();
+    $oc = q('SELECT * FROM web_candidate WHERE id = ?', [(int)get('offer')])->fetch();
+    $tpl = q("SELECT * FROM web_letter_tpl WHERE code = 'OFFER' ORDER BY id LIMIT 1")->fetch();
+    if (!$oc || !$tpl) { http_response_code(404); exit('Kandidat atau template tidak ditemukan.'); }
+    $oj = q($jobSql . ' WHERE j.id = ?', [$oc['job_id']])->fetch() ?: general_job();
+    $company = isset($CONFIG['company']) ? $CONFIG['company'] : 'Perusahaan';
+    $months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    $body = render_letter($tpl['body'], ['nama' => $oc['name'], 'jabatan' => $oj['jab'] ?: $oj['title'], 'departemen' => $oj['dep'] ?: '........', 'kantor' => $oj['kan'] ?: '........',
+        'status_kerja' => $oj['employment'] ?: 'Karyawan tetap (PKWTT)', 'perusahaan' => $company, 'tanggal' => (int)date('j') . ' ' . $months[(int)date('n') - 1] . ' ' . date('Y')]);
+    header('Content-Type: text/html; charset=utf-8'); ?><!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offer letter <?= h($oc['name']) ?></title>
+<style>body{font:14px/1.6 Georgia,"Times New Roman",serif;color:#1d2129;background:#f6f7f9;margin:0;padding:24px 12px}.doc{max-width:720px;margin:0 auto;background:#fff;border:1px solid #e2e5ea;border-radius:8px;padding:40px 48px;white-space:pre-wrap}.head{text-align:center;border-bottom:2px solid #1d2129;padding-bottom:10px;margin-bottom:18px;font-size:18px;font-weight:bold;letter-spacing:.04em;white-space:normal}.btn{display:inline-block;margin:0 auto 12px;padding:7px 14px;border:1px solid #cfd4dc;border-radius:6px;background:#fff;cursor:pointer;font:13px system-ui}@media(max-width:640px){.doc{padding:20px}}@media print{body{background:#fff;padding:0}.doc{border:none}.noprint{display:none}}</style></head><body>
+<div class="noprint" style="text-align:center"><button class="btn" onclick="window.print()">Cetak / simpan PDF</button></div>
+<div class="doc"><div class="head"><?= h($company) ?></div><?= h($body) ?></div></body></html>
+<?php
+    exit;
+}
+
 // ---------- actions ----------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -223,6 +244,7 @@ elseif ($p === 'candidate'):
           <p><a class="btn primary" href="letters.php?<?= h(http_build_query(['p' => 'make', 'tpl_id' => $ctpl, 'pegawai_id' => $c['pegawai_id'], 'issued' => date('Y-m-d')])) ?>">Buat kontrak kerja (PKWTT + NDA)</a></p>
           <p class="muted">Lengkapi dulu NIK dan alamat karyawan agar terisi di kontrak. Gaji, jam kerja dan nomor diisi di surat sebelum dicetak.</p><?php endif; ?>
       <?php else: ?>
+      <p><a class="btn" href="recruit.php?offer=<?= (int)$c['id'] ?>" target="_blank">Cetak surat penerimaan kerja (offer letter)</a></p>
       <form method="post" class="form"><?= $csrf ?><input type="hidden" name="action" value="cand_update"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
         <label class="field"><span>Lowongan</span><select name="job_id"><option value="0">Lamaran umum (tanpa lowongan)</option>
           <?php foreach ($allJobs as $o): ?><option value="<?= (int)$o['id'] ?>"<?= (int)$c['job_id'] === (int)$o['id'] ? ' selected' : '' ?>><?= h($o['title']) ?><?= $o['status'] === 'open' ? '' : ' (ditutup)' ?></option><?php endforeach; ?></select></label>
