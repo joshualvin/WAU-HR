@@ -437,7 +437,7 @@ elseif ($p === 'bonus'):
   <?php if (!erp_enabled()): ?><div class="notice"><div><b>WAU ERP belum terhubung</b>Isi erp_token di config.php (sama dengan hr_api_token di secret WAU ERP) agar realisasi penjualan bisa diambil dari surat jalan.</div></div><?php endif; ?>
   <form method="post"><?= $csrf ?><input type="hidden" name="action" value="bonus_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
   <div class="tablecard"><div class="tablescroll"><table>
-    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th title="Trip antar gudang sebagai driver (Rp10.000 per trip)">Trip driver</th><th title="Trip antar tanpa bantuan kernet/driver (Rp5.000 per trip)">Trip sendiri</th><th title="Isi untuk mengganti lembur hasil hitung scan; kosong = hitung otomatis, 0 = tanpa lembur">Lembur manual (Rp)</th><th>Keterangan</th></tr></thead><tbody>
+    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th title="Jumlah hari menyetir sebagai driver (Rp10.000 per hari)">Hari driver</th><th title="Jumlah trip kirim sendiri, hanya dengan 1 kernet (Rp5.000 per trip)">Trip sendiri</th><th title="Isi untuk mengganti lembur hasil hitung scan; kosong = hitung otomatis, 0 = tanpa lembur">Lembur manual (Rp)</th><th>Keterangan</th></tr></thead><tbody>
     <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; if (empty($pays[$id])) continue;
         $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => '', 'sales_source' => '', 'ot_manual' => null, 'trip_driver' => 0, 'trip_alone' => 0];
         list(, $pct) = sales_bonus($v['target'], $v['sales'], $tiers); $tot += $v['sales_bonus'] + $v['other_bonus'];
@@ -759,8 +759,8 @@ else:
                                 'attend_bonus_gudang' => 'Insentif kehadiran gudang (Rp; nama departemen/kantor memuat "gudang")',
                                 'dl_weekday' => 'Uang DL per hari dinas luar (Rp; ditandai di Input Cepat)',
                                 'dl_saturday' => 'Uang DL hari Sabtu (Rp)',
-                                'trip_driver' => 'Gudang: insentif per trip sebagai driver (Rp)',
-                                'trip_alone' => 'Gudang: insentif per trip sendiri, tanpa bantuan (Rp)',
+                                'trip_driver' => 'Gudang: insentif per hari menyetir sebagai driver (Rp)',
+                                'trip_alone' => 'Gudang: insentif per trip kirim sendiri, hanya dengan 1 kernet (Rp)',
                                 'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)',
                                 'umr' => 'UMR/UMK daerah (Rp / bulan, 0 = tidak dicek): gaji pokok + tunjangan tetap di bawahnya diberi tanda di Data gaji karyawan',
                                 'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],
