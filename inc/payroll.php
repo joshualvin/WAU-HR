@@ -32,6 +32,7 @@ function ensure_payroll_tables()
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
     // daily wage for harian lepas (added later)
     if (!q("SHOW COLUMNS FROM web_pay_emp LIKE 'upah_harian'")->fetch()) db()->exec('ALTER TABLE web_pay_emp ADD upah_harian BIGINT NOT NULL DEFAULT 0');
+    if (!q("SHOW COLUMNS FROM web_pay_emp LIKE 'base_tk'")->fetch()) db()->exec('ALTER TABLE web_pay_emp ADD base_tk BIGINT NOT NULL DEFAULT 0, ADD base_kes BIGINT NOT NULL DEFAULT 0');   // fixed BPJS wage bases; 0 = gaji pokok + tunjangan
     ensure_employment_tables();
     ensure_dl_tables();
     // Jan-Nov totals brought in from before the app was used (or kept elsewhere): feed the December annual PPh 21
@@ -78,6 +79,8 @@ function payroll_defaults()
         'trip_driver' => 10000,                                           // gudang: incentive per day driving as driver
         'trip_alone' => 5000,                                             // gudang: per trip delivered with only 1 kernet (kirim sendiri)
         'npwp_surcharge' => 20,                                           // % added to PPh 21 for an employee without NPWP; 0 = off
+        'ot_net_gudang' => 1,                                             // gudang: lembur = overtime minutes - early leave - lateness over the tolerance, flat 1.5x (their sheet)
+        'late_tolerance' => 10,                                           // minutes of lateness per day present that are not netted against lembur
         'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];
@@ -159,20 +162,28 @@ function attendance_incentive($absent, $present, $isGudang, $s)
     return (int)($isGudang ? $s['attend_bonus_gudang'] : $s['attend_bonus_office']);
 }
 
+/** Gudang lembur minutes: weekday overtime less early leave and the lateness beyond the tolerance per day present (can be negative). */
+function gudang_net_minutes($otMin, $earlyMin, $lateMin, $daysPresent, $tolerance)
+{
+    return $otMin - $earlyMin - max(0, $lateMin - $tolerance * $daysPresent);
+}
+
 /** BPJS amounts for one employee: company and employee parts, rounded to rupiah. */
 function bpjs($pay, $s)
 {
     $wage = $pay['gaji_pokok'] + $pay['tunjangan'];
+    $tk = !empty($pay['base_tk']) ? $pay['base_tk'] : $wage;      // fixed base per employee when the company reports a different wage
+    $ks = !empty($pay['base_kes']) ? $pay['base_kes'] : $wage;
     $r = function ($base, $pct) { return (int)round($base * $pct / 100); };
-    $kesBase = min($wage, $s['kes_cap']);
-    $jpBase = min($wage, $s['jp_cap']);
+    $kesBase = min($ks, $s['kes_cap']);
+    $jpBase = min($tk, $s['jp_cap']);
     return [
         'kes_co'  => $pay['bpjs_kes'] ? $r($kesBase, $s['kes_co']) : 0,
         'kes_emp' => $pay['bpjs_kes'] ? $r($kesBase, $s['kes_emp']) : 0,
-        'jht_co'  => $pay['bpjs_tk'] ? $r($wage, $s['jht_co']) : 0,
-        'jht_emp' => $pay['bpjs_tk'] ? $r($wage, $s['jht_emp']) : 0,
-        'jkk'     => $pay['bpjs_tk'] ? $r($wage, $s['jkk']) : 0,
-        'jkm'     => $pay['bpjs_tk'] ? $r($wage, $s['jkm']) : 0,
+        'jht_co'  => $pay['bpjs_tk'] ? $r($tk, $s['jht_co']) : 0,
+        'jht_emp' => $pay['bpjs_tk'] ? $r($tk, $s['jht_emp']) : 0,
+        'jkk'     => $pay['bpjs_tk'] ? $r($tk, $s['jkk']) : 0,
+        'jkm'     => $pay['bpjs_tk'] ? $r($tk, $s['jkm']) : 0,
         'jp_co'   => $pay['bpjs_jp'] ? $r($jpBase, $s['jp_co']) : 0,
         'jp_emp'  => $pay['bpjs_jp'] ? $r($jpBase, $s['jp_emp']) : 0,
     ];
@@ -310,13 +321,15 @@ function calculate_payroll($from, $to)
         foreach ($myComps as $cid => $amt) if (isset($defs[$cid]) && $defs[$cid]['kind'] === 'earning' && $defs[$cid]['fixed'] && $defs[$cid]['per'] === 'month') $fixedComp += $amt;
         $wage = $daily ? $p['upah_harian'] * $s['daily_month_days'] + $fixedComp : $p['gaji_pokok'] + $p['tunjangan'] + $fixedComp;
         $hourly = $wage / $s['ot_divisor'];
-        $c = ['workdays' => 0, 'present' => 0, 'absent' => 0, 'late_min' => 0, 'ot_min' => 0, 'ot_rest_min' => 0, 'ot_pay' => 0];
+        $c = ['workdays' => 0, 'present' => 0, 'absent' => 0, 'late_min' => 0, 'early_min' => 0, 'ot_min' => 0, 'ot_rest_min' => 0, 'ot_pay' => 0, 'ot_rest_pay' => 0];
+        $isGudang = isset($gudang['pembagian2'][$e['pembagian2_id']]) || isset($gudang['pembagian3'][$e['pembagian3_id']]);
         foreach ($myDays as $r) {
             if (($start && $r['date'] < $start) || ($end && $r['date'] > $end)) continue;   // not employed that day
             if (!$r['off']) $c['workdays']++;
             if ($r['first'] || $r['last']) $c['present']++;
             if ($r['status'] === 'absent') $c['absent']++;
             $c['late_min'] += $r['late'];
+            $c['early_min'] += $r['early'];
             $rest = $r['off'] && $r['minutes'];                // worked on a day off / holiday
             $otMin = $rest ? $r['minutes'] : $r['ot'];
             // with the approval rule on, pay what the machine recorded but no more than the approved request
@@ -324,7 +337,13 @@ function calculate_payroll($from, $to)
             if ($otMin > 0) {
                 $c[$rest ? 'ot_rest_min' : 'ot_min'] += $otMin;
                 $c['ot_pay'] += overtime_pay($otMin, $hourly, $rest);
+                if ($rest) $c['ot_rest_pay'] += overtime_pay($otMin, $hourly, true);
             }
+        }
+        // gudang rule: weekday lembur minutes less early leave and lateness beyond the tolerance, paid flat 1.5x; can come out negative
+        if (!$daily && $isGudang && $s['ot_net_gudang']) {
+            $c['ot_net_min'] = gudang_net_minutes($c['ot_min'], $c['early_min'], $c['late_min'], $c['present'], $s['late_tolerance']);
+            $c['ot_pay'] = $c['ot_rest_pay'] + (int)round($c['ot_net_min'] / 60 * 1.5 * $hourly);
         }
         $earn = $daily
             ? ['Upah harian (' . $c['present'] . ' hari × ' . rupiah($p['upah_harian']) . ')' => (int)($p['upah_harian'] * $c['present'])]

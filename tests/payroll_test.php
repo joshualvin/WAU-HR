@@ -103,4 +103,8 @@ check('DL: 15 weekdays + 2 Saturdays', dl_pay(['2026-10-01', '2026-10-02', '2026
 check('DL ranges', dl_ranges(['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-05', '2026-10-14']), 'Kam 01-10 s/d Sen 05-10, Rab 14-10');
 check('no-NPWP surcharge 20% on TER tax', pph21(['ptkp' => 'TK/0'], 8000000, 0, '2027-03-20', 1, ['month' => [0, 0], 'year' => [0, 0]], 20)[0], (int)round(120000 * 1.2));
 check('annual: biaya jabatan cap follows months worked', [pph_annual(120000000, 0, 'TK/0', 12), pph_annual(24000000, 0, 'TK/0', 2)], [(int)pasal17(120000000 - 6000000 - 54000000), (int)pasal17(24000000 - 1000000 - 54000000)]);
+$bf = bpjs(['gaji_pokok' => 5290000, 'tunjangan' => 55000, 'bpjs_kes' => 1, 'bpjs_tk' => 1, 'bpjs_jp' => 1, 'base_tk' => 4965000, 'base_kes' => 5032875], $ai);
+check('fixed BPJS bases: JKK, JHT employee, Kes company', [$bf['jkk'], $bf['jht_emp'], $bf['kes_co'], $bf['kes_emp']], [11916, 99300, 201315, 50329]);
+check('gudang net lembur: minutes', [gudang_net_minutes(230, 98, 0, 23, 10), gudang_net_minutes(239, 0, 226, 24, 10), gudang_net_minutes(100, 0, 100, 10, 10)], [132, 239 - max(0, 226 - 240), 100]);
+check('gudang net lembur: late over tolerance goes negative', gudang_net_minutes(60, 0, 400, 20, 10), 60 - 200);
 echo "payroll_test: $ok checks passed\n";
