@@ -27,6 +27,8 @@ function ensure_payextra_tables()
         PRIMARY KEY (period_to, pegawai_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
     if (!q("SHOW COLUMNS FROM web_bonus LIKE 'sales_source'")->fetch()) db()->exec("ALTER TABLE web_bonus ADD sales_source VARCHAR(60) NOT NULL DEFAULT ''");
+    // manual overtime pay for the period (NULL = calculated from the scans)
+    if (!q("SHOW COLUMNS FROM web_bonus LIKE 'ot_manual'")->fetch()) db()->exec('ALTER TABLE web_bonus ADD ot_manual BIGINT NULL');
     // salesman code in WAU ERP (mastersalesman) per employee, for taking actual sales from the ERP
     db()->exec("CREATE TABLE IF NOT EXISTS web_sales_code (
         pegawai_id INT NOT NULL PRIMARY KEY,

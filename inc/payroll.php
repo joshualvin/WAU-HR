@@ -319,6 +319,7 @@ function calculate_payroll($from, $to)
             $label = $dfn['name'] . ($dfn['per'] === 'day' ? ' (' . $c['present'] . ' hari)' : $tag);
             if ($dfn['kind'] === 'earning') $earn[$label] = (int)$val; else $compDeduct[$label] = (int)$val;
         }
+        if (isset($bonuses[$id]) && $bonuses[$id]['ot_manual'] !== null) $c['ot_pay'] = (int)$bonuses[$id]['ot_manual'];   // typed on the Bonus page instead of the scan calculation
         $earn['Lembur'] = $c['ot_pay'];
         if (!$daily && !empty($dlDays[$id])) { list($dlAmt, $dlWk, $dlSat) = dl_pay($dlDays[$id], $s); $earn["Uang DL ($dlWk hari" . ($dlSat ? " + $dlSat Sabtu" : '') . ')'] = $dlAmt; }
         $isGudang = isset($gudang['pembagian2'][$e['pembagian2_id']]) || isset($gudang['pembagian3'][$e['pembagian3_id']]);

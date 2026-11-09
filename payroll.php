@@ -68,9 +68,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $num = function ($k) use ($v) { return isset($v[$k]) ? (int)preg_replace('/\D/', '', $v[$k]) : 0; };
             list($sb) = sales_bonus($num('target'), $num('sales'), $tiers);
-            if (!$num('target') && !$num('sales') && !$num('other_bonus')) { q('DELETE FROM web_bonus WHERE period_to = ? AND pegawai_id = ?', [$to, (int)$id]); continue; }
-            q('REPLACE INTO web_bonus (period_to, pegawai_id, target, sales, sales_bonus, other_bonus, note, sales_source, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [$to, (int)$id, $num('target'), $num('sales'), $sb, $num('other_bonus'), mb_substr(trim(isset($v['note']) ? $v['note'] : ''), 0, 200), $source, actor()]);
+            $otRaw = isset($v['ot_manual']) ? trim($v['ot_manual']) : '';
+            $otManual = $otRaw === '' ? null : (int)preg_replace('/\D/', '', $otRaw);   // empty = calculated from scans, 0 = no lembur
+            if (!$num('target') && !$num('sales') && !$num('other_bonus') && $otManual === null) { q('DELETE FROM web_bonus WHERE period_to = ? AND pegawai_id = ?', [$to, (int)$id]); continue; }
+            q('REPLACE INTO web_bonus (period_to, pegawai_id, target, sales, sales_bonus, other_bonus, note, sales_source, updated_by, ot_manual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$to, (int)$id, $num('target'), $num('sales'), $sb, $num('other_bonus'), mb_substr(trim(isset($v['note']) ? $v['note'] : ''), 0, 200), $source, actor(), $otManual]);
             $n++;
         }
         audit($action, "$to: $n karyawan");
@@ -417,15 +419,16 @@ elseif ($p === 'bonus'):
   <?php if (!erp_enabled()): ?><div class="notice"><div><b>WAU ERP belum terhubung</b>Isi erp_token di config.php (sama dengan hr_api_token di secret WAU ERP) agar realisasi penjualan bisa diambil dari surat jalan.</div></div><?php endif; ?>
   <form method="post"><?= $csrf ?><input type="hidden" name="action" value="bonus_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
   <div class="tablecard"><div class="tablescroll"><table>
-    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th>Keterangan</th></tr></thead><tbody>
+    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th title="Isi untuk mengganti lembur hasil hitung scan; kosong = hitung otomatis, 0 = tanpa lembur">Lembur manual (Rp)</th><th>Keterangan</th></tr></thead><tbody>
     <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; if (empty($pays[$id])) continue;
-        $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => '', 'sales_source' => ''];
+        $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => '', 'sales_source' => '', 'ot_manual' => null];
         list(, $pct) = sales_bonus($v['target'], $v['sales'], $tiers); $tot += $v['sales_bonus'] + $v['other_bonus'];
         $money = function ($k) use ($v, $id) { return '<input type="text" inputmode="numeric" name="b[' . $id . '][' . $k . ']" value="' . ($v[$k] ? h(number_format($v[$k], 0, ',', '.')) : '') . '" style="width:140px;text-align:right" placeholder="0">'; }; ?>
       <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span></td>
         <td><input type="text" name="b[<?= $id ?>][code]" value="<?= h(isset($codes[$id]) ? $codes[$id] : '') ?>" maxlength="10" style="width:70px;text-transform:uppercase" placeholder="—"></td>
         <td><?= $money('target') ?></td><td><?= $money('sales') ?><?php if ($v['sales_source'] !== ''): ?><br><small class="muted"><?= h($v['sales_source']) ?></small><?php endif; ?></td><td class="num"><?= $v['target'] ? str_replace('.', ',', $pct) . '%' : '' ?></td>
         <td class="num"><b><?= $v['sales_bonus'] ? rupiah($v['sales_bonus']) : '' ?></b></td><td><?= $money('other_bonus') ?></td>
+        <td><input type="text" inputmode="numeric" name="b[<?= $id ?>][ot_manual]" value="<?= $v['ot_manual'] !== null ? h(number_format($v['ot_manual'], 0, ',', '.')) : '' ?>" style="width:140px" placeholder="otomatis"></td>
         <td><input type="text" name="b[<?= $id ?>][note]" value="<?= h($v['note']) ?>" maxlength="200" style="width:180px"></td></tr>
     <?php endforeach; ?>
     </tbody></table></div></div>
