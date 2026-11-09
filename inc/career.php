@@ -111,10 +111,13 @@ function career_sync($applicants = true)
     foreach ($res['applicants'] as $a) {
         $note = career_ai_note($a);
         if (array_key_exists($a['id'], $known)) {
+            $ts = career_parse_date($a['submitted']);   // an earlier import may have stored the import day instead of the day the CV was sent
+            if ($ts) q('UPDATE web_candidate SET created_at = ? WHERE ext_id = ? AND DATE(created_at) <> ?', [date('Y-m-d H:i:s', $ts), $a['id'], date('Y-m-d', $ts)]);
             if ($known[$a['id']] === null && $a['matchScore'] !== null) q('UPDATE web_candidate SET ai_score = ?, ai_note = ? WHERE ext_id = ?', [(int)$a['matchScore'], $note, $a['id']]);
             continue;
         }
-        $at = strtotime($a['submitted']) ? date('Y-m-d H:i:s', strtotime($a['submitted'])) : date('Y-m-d H:i:s');
+        $ts = career_parse_date($a['submitted']);
+        $at = $ts ? date('Y-m-d H:i:s', $ts) : date('Y-m-d H:i:s');
         $source = stripos($a['source'], 'offline') === 0 ? 'Karir (offline)' : 'Karir (online)';
         q('INSERT INTO web_candidate (job_id, name, email, phone, cv_ext, cover, source, ext_id, ai_score, ai_note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [isset($jobs[mb_strtolower($a['position'])]) ? $jobs[mb_strtolower($a['position'])] : 0, mb_substr($a['name'], 0, 120), mb_substr($a['email'], 0, 120), mb_substr($a['phone'], 0, 30),
@@ -152,4 +155,16 @@ function career_fetch_cv($cand)
     if (file_put_contents(CV_DIR . '/' . $name, $bytes) === false) return ['', 'CV tidak bisa disimpan di server.'];
     q('UPDATE web_candidate SET cv_file = ? WHERE id = ?', [$name, $cand['id']]);
     return [$name, null];
+}
+
+/** The day an applicant sent the CV, from the sheet's Submitted cell: 2026-10-17 14:32, 17/10/2026 14.32, 17-10-2026, a spreadsheet date number, or anything strtotime knows. Null when unreadable. */
+function career_parse_date($v)
+{
+    $v = trim((string)$v);
+    if ($v === '') return null;
+    if (is_numeric($v) && $v > 30000 && $v < 80000) return (int)round(((float)$v - 25569) * 86400);   // spreadsheet serial date
+    if (preg_match('#^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?:[ ,T]+(\d{1,2})[:.](\d{2}))?#', $v, $m) && checkdate((int)$m[2], (int)$m[1], (int)$m[3]))
+        return mktime(isset($m[4]) ? (int)$m[4] : 12, isset($m[5]) ? (int)$m[5] : 0, 0, (int)$m[2], (int)$m[1], (int)$m[3]);
+    $t = strtotime($v);
+    return $t ?: null;
 }
