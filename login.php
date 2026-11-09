@@ -30,7 +30,7 @@ $company = isset($CONFIG['company']) ? $CONFIG['company'] : 'Perusahaan';
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Masuk · HR</title>
-<link rel="stylesheet" href="assets/hris.css">
+<link rel="stylesheet" href="assets/hris.css?v=<?= (int)@filemtime(__DIR__ . '/assets/hris.css') ?>">
 <link rel="icon" type="image/png" href="assets/logo.png">
 <style>
 .lg { min-height: 100%; display: grid; place-items: center; padding: 16px; }

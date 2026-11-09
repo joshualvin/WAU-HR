@@ -86,7 +86,7 @@ function hris_header($title, $module, $sub = '', $crumb = '', $actions = '')
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?> · HR</title>
-<link rel="stylesheet" href="assets/hris.css">
+<link rel="stylesheet" href="assets/hris.css?v=<?= (int)@filemtime(__DIR__ . '/../assets/hris.css') ?>">
 <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>

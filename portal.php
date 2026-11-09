@@ -729,7 +729,7 @@ function portal_header($title, $tabs, $active = '', $emp = null)
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?> · Portal Pegawai</title>
-<link rel="stylesheet" href="assets/portal.css">
+<link rel="stylesheet" href="assets/portal.css?v=<?= (int)@filemtime(__DIR__ . '/assets/portal.css') ?>">
 <link rel="icon" type="image/png" href="assets/logo.png">
 </head>
 <body>
