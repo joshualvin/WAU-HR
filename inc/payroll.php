@@ -69,7 +69,7 @@ function payroll_defaults()
         'attend_bonus_office' => 200000,                                  // incentive for a month with 0 absent days; 0 = off
         'attend_bonus_gudang' => 100000,                                  // same for gudang staff (department or office name contains "gudang")
         'dl_weekday' => 125000,                                           // Uang DL per dinas luar day (marked on Input Cepat)
-        'dl_saturday' => 112500,                                          // Uang DL for a Saturday
+        'dl_saturday' => 75000,                                           // Uang DL for a Saturday
         'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];
