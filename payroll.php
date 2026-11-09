@@ -732,6 +732,8 @@ else:
                                    'jp_cap' => 'Batas upah JP (Rp)', 'jkk' => 'JKK (%) — sesuai tingkat risiko', 'jkm' => 'JKM (%)'],
         'Lembur & potongan' => ['ot_divisor' => 'Pembagi upah per jam (173)', 'late_per_minute' => 'Potongan terlambat per menit (Rp, 0 = tidak dipotong)',
                                 'absent_deduct' => 'Potong gaji hari tidak hadir tanpa izin (1 = ya, 0 = tidak)',
+                                'attend_bonus_office' => 'Insentif kehadiran kantor pusat (Rp, bulan tanpa hari tidak hadir; 0 = tidak ada)',
+                                'attend_bonus_gudang' => 'Insentif kehadiran gudang (Rp; nama departemen/kantor memuat "gudang")',
                                 'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)',
                                 'umr' => 'UMR/UMK daerah (Rp / bulan, 0 = tidak dicek): gaji pokok + tunjangan tetap di bawahnya diberi tanda di Data gaji karyawan',
                                 'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],

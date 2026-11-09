@@ -64,6 +64,8 @@ function payroll_defaults()
         'late_per_minute' => 0,                                           // company rule, rupiah per late minute
         'absent_deduct' => 1,                                             // 1 = deduct pro-rata for absent days without leave
         'ot_requires_approval' => 0,                                      // 1 = pay overtime only up to approved requests
+        'attend_bonus_office' => 200000,                                  // incentive for a month with 0 absent days; 0 = off
+        'attend_bonus_gudang' => 100000,                                  // same for gudang staff (department or office name contains "gudang")
         'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];
@@ -136,6 +138,13 @@ function pasal17($pkp)
         $prev = $b[0];
     }
     return floor($tax);
+}
+
+/** Attendance incentive: 0 absent days and at least one day present earns the head-office or the gudang amount. */
+function attendance_incentive($absent, $present, $isGudang, $s)
+{
+    if ($absent > 0 || $present < 1) return 0;
+    return (int)($isGudang ? $s['attend_bonus_gudang'] : $s['attend_bonus_office']);
 }
 
 /** BPJS amounts for one employee: company and employee parts, rounded to rupiah. */
@@ -250,8 +259,10 @@ function calculate_payroll($from, $to)
     $loans = loan_deductions($to);
     $days = [];
     foreach (daily_attendance($from, $to) as $r) $days[$r['pegawai_id']][] = $r;
-    $staff = q('SELECT pegawai_id, pegawai_pin, pegawai_nama, pegawai_status, tgl_mulai_kerja, tgl_resign FROM pegawai
+    $staff = q('SELECT pegawai_id, pegawai_pin, pegawai_nama, pegawai_status, tgl_mulai_kerja, tgl_resign, pembagian2_id, pembagian3_id FROM pegawai
                 WHERE (pegawai_status = 1 OR tgl_resign >= ?) AND (tgl_mulai_kerja IS NULL OR tgl_mulai_kerja <= ?) ORDER BY pegawai_nama', [$from, $to])->fetchAll();
+    $gudang = [];   // department / office ids whose name says gudang
+    foreach (['pembagian2', 'pembagian3'] as $t) foreach (lookup($t) as $lid => $lname) if (stripos($lname, 'gudang') !== false) $gudang[$t][$lid] = 1;
     $out = [];
     foreach ($staff as $e) {
         $id = $e['pegawai_id'];
@@ -304,6 +315,8 @@ function calculate_payroll($from, $to)
             if ($dfn['kind'] === 'earning') $earn[$label] = (int)$val; else $compDeduct[$label] = (int)$val;
         }
         $earn['Lembur'] = $c['ot_pay'];
+        $isGudang = isset($gudang['pembagian2'][$e['pembagian2_id']]) || isset($gudang['pembagian3'][$e['pembagian3_id']]);
+        if (!$daily) $earn['Insentif kehadiran (0 hari tidak hadir)'] = attendance_incentive($c['absent'], $c['present'], $isGudang, $s);
         if (isset($bonuses[$id])) {
             $bn = $bonuses[$id];
             $pct = $bn['target'] > 0 ? round($bn['sales'] / $bn['target'] * 100, 1) : 0;
