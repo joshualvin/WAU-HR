@@ -101,12 +101,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $start = valid_date(post('start')) ? post('start') : date('Y-m-d');
         $end = valid_date(post('end')) && post('end') >= $start ? post('end') : null;
         $id = hire_candidate($cand, $job, $start, $end);
+        apply_candidate_details($id, $cand);   // NIK, NPWP, address, status, PTKP... from the applicant details
         q('INSERT INTO web_candidate_note (candidate_id, note, created_by, created_at) VALUES (?, ?, ?, ?)', [$cand['id'], 'Diterima, mulai bekerja ' . fmt_date($start), actor(), $now]);
         $hired = (int)q("SELECT COUNT(*) FROM web_candidate WHERE job_id = ? AND stage = 'hired'", [$job['id']])->fetchColumn();
         if ($job['id'] && $hired >= (int)$job['headcount']) q("UPDATE web_job SET status = 'closed' WHERE id = ?", [$job['id']]);
         audit('candidate_hire', "{$cand['name']} → pegawai $id");
         flash("{$cand['name']} menjadi karyawan" . ($job['id'] && $hired >= (int)$job['headcount'] ? '; kebutuhan lowongan terpenuhi, lowongan ditutup' : '') . '. Lengkapi datanya dan jalankan onboarding.');
         redirect('talent.php?p=checklist&type=onboarding&id=' . $id);
+    } elseif ($action === 'cand_details' && $cand && $cand['stage'] !== 'hired') {
+        $d = candidate_clean_details($_POST, array_keys(candidate_detail_fields()));
+        q('UPDATE web_candidate SET details = ?, updated_at = ? WHERE id = ?', [$d ? json_encode($d) : null, $now, $cand['id']]);
+        audit('candidate_details', $cand['name']);
+        flash('Data pelamar disimpan; ikut disalin ke data karyawan saat diterima.');
+        redirect($candUrl);
     } elseif ($action === 'cand_delete' && $cand && $cand['stage'] !== 'hired') {
         if ($cand['cv_file'] && is_file(CV_DIR . '/' . basename($cand['cv_file']))) unlink(CV_DIR . '/' . basename($cand['cv_file']));
         q('DELETE FROM web_candidate_note WHERE candidate_id = ?', [$cand['id']]);
@@ -236,6 +243,18 @@ elseif ($p === 'candidate'):
         <div style="white-space:pre-line;font-size:13px"><?= h($c['ai_note']) ?></div><small class="muted">Hanya bantuan menyortir; keputusan tetap oleh HR.</small><?php endif; ?>
       <?php if ($c['cover']): ?><h2 style="margin-top:14px">Surat lamaran</h2><div style="white-space:pre-line"><?= h($c['cover']) ?></div><?php endif; ?>
       <?php if (!$c['cv_file'] && !$c['cv_ext']): ?><p class="muted">Tidak ada CV.</p><?php endif; ?></div>
+    <?php $cd = candidate_details($c); ?>
+    <div class="card"><h2>Data pelamar</h2>
+      <form method="post" class="form"><?= $csrf ?><input type="hidden" name="action" value="cand_details"><input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+        <div class="row2">
+        <?php foreach (candidate_detail_fields() as $dk => $df): $fn = str_replace(':', '_', $dk); $dv = isset($cd[$dk]) ? $cd[$dk] : ''; ?>
+          <label class="field"><span><?= h($df[0]) ?></span>
+            <?php if ($df[1] === 'select'): ?><select name="<?= $fn ?>"<?= $hired ? ' disabled' : '' ?>><option value="">—</option><?php foreach ($df[2] as $ov => $ol): ?><option value="<?= h($ov) ?>"<?= (string)$dv === (string)$ov ? ' selected' : '' ?>><?= h($ol) ?></option><?php endforeach; ?></select>
+            <?php else: ?><input type="<?= $df[1] === 'text' ? 'text' : $df[1] ?>" name="<?= $fn ?>" value="<?= h($dv) ?>"<?= $hired ? ' disabled' : '' ?>><?php endif; ?></label>
+        <?php endforeach; ?></div>
+        <?php if (!$hired): ?><div class="formfoot"><button class="btn">Simpan data pelamar</button></div><?php endif; ?>
+        <p class="muted">Dari formulir lamaran: jenis kelamin, tanggal lahir, pendidikan, status, tanggungan dan alamat. NIK dan NPWP diisi HR di sini (NIK 16 angka, NPWP 15 atau 16 angka). Saat diterima, semuanya disalin ke data karyawan, dan PTKP gaji diisi dari status dan tanggungan.</p>
+      </form></div>
     <div class="card"><h2>Seleksi</h2>
       <?php if ($hired): ?><p class="muted">Kandidat sudah diterima menjadi karyawan.</p>
         <?php require_once __DIR__ . '/inc/people.php'; ensure_people_tables();

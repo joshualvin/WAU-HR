@@ -43,6 +43,7 @@ function ensure_recruit_tables()
         updated_at DATETIME NOT NULL,
         KEY job (job_id, stage)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+    if (!q("SHOW COLUMNS FROM web_candidate LIKE 'details'")->fetch()) db()->exec('ALTER TABLE web_candidate ADD details TEXT NULL');   // applicant details as JSON, copied to the employee when hired
     db()->exec("CREATE TABLE IF NOT EXISTS web_candidate_note (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         candidate_id INT UNSIGNED NOT NULL,
@@ -134,4 +135,62 @@ function hire_candidate($cand, $job, $start, $end = null)
         throw $e;
     }
     return $id;
+}
+
+// ---------- applicant details (the fields HR needs for the employee record and payroll) ----------
+
+require_once __DIR__ . '/people.php';
+
+/** Applicant detail fields: key => [label, type, options]. Keys are those of profile_fields(), plus 'gender'. The public form uses the first six. */
+function candidate_detail_fields()
+{
+    $pf = profile_fields();
+    return ['gender' => ['Jenis kelamin', 'select', [1 => 'Laki-laki', 2 => 'Perempuan']],
+            'p:tgl_lahir' => $pf['p:tgl_lahir'], 'p:tempat_lahir' => $pf['p:tempat_lahir'], 'address' => $pf['address'], 'education' => $pf['education'],
+            'marital' => $pf['marital'], 'dependants' => $pf['dependants'], 'nik_ktp' => $pf['nik_ktp'], 'npwp' => $pf['npwp']];
+}
+
+/** Valid values from a form (key => value, only the $keys given; empty and invalid values are dropped). */
+function candidate_clean_details($in, $keys)
+{
+    $out = [];
+    foreach (candidate_detail_fields() as $k => $f) {
+        $fk = str_replace(':', '_', $k);
+        if (!in_array($k, $keys, true) || !isset($in[$fk])) continue;
+        $v = trim((string)$in[$fk]);
+        if ($v === '') continue;
+        if ($f[1] === 'select' && !isset($f[2][$v])) continue;
+        if ($f[1] === 'date' && !valid_date($v)) continue;
+        if ($f[1] === 'number') $v = (string)max(0, min(9, (int)$v));
+        if ($k === 'nik_ktp' || $k === 'npwp') { $v = preg_replace('/\D/', '', $v); if (!in_array(strlen($v), $k === 'nik_ktp' ? [16] : [15, 16], true)) continue; }
+        $out[$k] = mb_substr($v, 0, 255);
+    }
+    return $out;
+}
+
+function candidate_details($cand)
+{
+    $d = isset($cand['details']) && $cand['details'] ? json_decode($cand['details'], true) : [];
+    return is_array($d) ? $d : [];
+}
+
+/** PTKP from marital status and dependants: K/n when married, otherwise TK/n (n up to 3). */
+function ptkp_from_status($marital, $dependants)
+{
+    return ($marital === 'kawin' ? 'K' : 'TK') . '/' . min(3, max(0, (int)$dependants));
+}
+
+/** Copy the applicant's details to the new employee: personal profile, gender, and PTKP / NPWP for payroll. */
+function apply_candidate_details($pegawaiId, $cand)
+{
+    $d = candidate_details($cand);
+    if (!$d) return;
+    if (isset($d['gender'])) { q('UPDATE pegawai SET gender = ? WHERE pegawai_id = ?', [(int)$d['gender'], $pegawaiId]); unset($d['gender']); }
+    if ($d) save_profile($pegawaiId, $d);
+    if (isset($d['marital']) || isset($d['npwp'])) {
+        require_once __DIR__ . '/payroll.php';
+        ensure_payroll_tables();
+        q('INSERT INTO web_pay_emp (pegawai_id, ptkp, npwp) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE ptkp = VALUES(ptkp), npwp = VALUES(npwp)',
+            [$pegawaiId, ptkp_from_status(isset($d['marital']) ? $d['marital'] : '', isset($d['dependants']) ? $d['dependants'] : 0), isset($d['npwp']) ? $d['npwp'] : '']);
+    }
 }

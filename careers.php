@@ -27,8 +27,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     list($file, $err) = save_cv($_FILES['cv']);
     if ($err) { flash($err, 'err'); redirect($back); }
     $now = date('Y-m-d H:i:s');
-    q('INSERT INTO web_candidate (job_id, name, email, phone, cv_file, cover, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [$job['id'], mb_substr($name, 0, 120), mb_substr($email, 0, 120), mb_substr(trim(post('phone')), 0, 30), $file, mb_substr(post('cover'), 0, 5000), 'Halaman karir', $now, $now]);
+    $details = candidate_clean_details($_POST, ['gender', 'p:tgl_lahir', 'address', 'education', 'marital', 'dependants']);
+    q('INSERT INTO web_candidate (job_id, name, email, phone, cv_file, cover, source, details, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [$job['id'], mb_substr($name, 0, 120), mb_substr($email, 0, 120), mb_substr(trim(post('phone')), 0, 30), $file, mb_substr(post('cover'), 0, 5000), 'Halaman karir', $details ? json_encode($details) : null, $now, $now]);
     redirect('careers.php?done=1');
 }
 
@@ -62,6 +63,11 @@ $jobs = $job ? [] : q("$openSql ORDER BY j.created_at DESC")->fetchAll();
         <label>Nama lengkap<input type="text" name="name" required maxlength="120"></label>
         <label>Email<input type="email" name="email" required maxlength="120"></label>
         <label>No. HP / WhatsApp<input type="tel" name="phone" required maxlength="30"></label>
+        <?php foreach (['gender', 'p:tgl_lahir', 'education', 'marital', 'dependants', 'address'] as $dk): $df = candidate_detail_fields()[$dk]; $fn = str_replace(':', '_', $dk); ?>
+        <label<?= $dk === 'address' ? ' class="wide"' : '' ?>><?= h($df[0]) ?> <small>(opsional)</small>
+          <?php if ($df[1] === 'select'): ?><select name="<?= $fn ?>"><option value="">—</option><?php foreach ($df[2] as $ov => $ol): ?><option value="<?= h($ov) ?>"><?= h($ol) ?></option><?php endforeach; ?></select>
+          <?php else: ?><input type="<?= $df[1] === 'text' ? 'text' : $df[1] ?>" name="<?= $fn ?>"<?= $df[1] === 'number' ? ' min="0" max="9"' : ' maxlength="255"' ?>><?php endif; ?></label>
+        <?php endforeach; ?>
         <label>CV (PDF, JPG atau PNG, maks. 5 MB)<input type="file" name="cv" required accept=".pdf,.jpg,.jpeg,.png"></label>
         <label class="wide">Surat lamaran / pesan singkat (opsional)<textarea name="cover" maxlength="5000"></textarea></label>
         <label class="hp" aria-hidden="true">Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
