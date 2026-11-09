@@ -41,7 +41,7 @@ function ensure_claim_tables()
 
 function reimburse_categories()
 {
-    return ['Transport', 'Makan', 'Kesehatan', 'Perjalanan dinas', 'ATK / perlengkapan', 'Komunikasi', 'Lainnya'];
+    return ['Transport', 'Bensin', 'Makan', 'Kesehatan', 'Perjalanan dinas', 'ATK / perlengkapan', 'Komunikasi', 'Lainnya'];
 }
 
 function claim_badge($status)
