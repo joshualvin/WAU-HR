@@ -29,6 +29,8 @@ function ensure_payextra_tables()
     if (!q("SHOW COLUMNS FROM web_bonus LIKE 'sales_source'")->fetch()) db()->exec("ALTER TABLE web_bonus ADD sales_source VARCHAR(60) NOT NULL DEFAULT ''");
     // manual overtime pay for the period (NULL = calculated from the scans)
     if (!q("SHOW COLUMNS FROM web_bonus LIKE 'ot_manual'")->fetch()) db()->exec('ALTER TABLE web_bonus ADD ot_manual BIGINT NULL');
+    // gudang delivery incentive: trips driven as driver, and trips done alone (without the usual helpers)
+    if (!q("SHOW COLUMNS FROM web_bonus LIKE 'trip_driver'")->fetch()) db()->exec('ALTER TABLE web_bonus ADD trip_driver INT NOT NULL DEFAULT 0, ADD trip_alone INT NOT NULL DEFAULT 0');
     // salesman code in WAU ERP (mastersalesman) per employee, for taking actual sales from the ERP
     db()->exec("CREATE TABLE IF NOT EXISTS web_sales_code (
         pegawai_id INT NOT NULL PRIMARY KEY,

@@ -70,6 +70,8 @@ function payroll_defaults()
         'attend_bonus_gudang' => 100000,                                  // same for gudang staff (department or office name contains "gudang")
         'dl_weekday' => 125000,                                           // Uang DL per dinas luar day (marked on Input Cepat)
         'dl_saturday' => 75000,                                           // Uang DL for a Saturday
+        'trip_driver' => 10000,                                           // gudang: incentive per delivery trip as driver
+        'trip_alone' => 5000,                                             // gudang: per trip done alone, without the usual helpers
         'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];
@@ -322,6 +324,10 @@ function calculate_payroll($from, $to)
         if (isset($bonuses[$id]) && $bonuses[$id]['ot_manual'] !== null) $c['ot_pay'] = (int)$bonuses[$id]['ot_manual'];   // typed on the Bonus page instead of the scan calculation
         $earn['Lembur'] = $c['ot_pay'];
         if (!$daily && !empty($dlDays[$id])) { list($dlAmt, $dlWk, $dlSat) = dl_pay($dlDays[$id], $s); $earn["Uang DL ($dlWk hari" . ($dlSat ? " + $dlSat Sabtu" : '') . ')'] = $dlAmt; }
+        if (isset($bonuses[$id]) && ($bonuses[$id]['trip_driver'] || $bonuses[$id]['trip_alone'])) {
+            $bt = $bonuses[$id];
+            $earn['Insentif antar (' . ($bt['trip_driver'] ? $bt['trip_driver'] . ' trip driver' : '') . ($bt['trip_driver'] && $bt['trip_alone'] ? ' + ' : '') . ($bt['trip_alone'] ? $bt['trip_alone'] . ' trip sendiri' : '') . ')'] = (int)round($bt['trip_driver'] * $s['trip_driver'] + $bt['trip_alone'] * $s['trip_alone']);
+        }
         $isGudang = isset($gudang['pembagian2'][$e['pembagian2_id']]) || isset($gudang['pembagian3'][$e['pembagian3_id']]);
         if (!$daily) $earn['Insentif kehadiran (0 hari tidak hadir)'] = attendance_incentive($c['absent'], $c['present'], $isGudang, $s);
         if (isset($bonuses[$id])) {

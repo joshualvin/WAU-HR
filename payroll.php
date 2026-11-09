@@ -81,9 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             list($sb) = sales_bonus($num('target'), $num('sales'), $tiers);
             $otRaw = isset($v['ot_manual']) ? trim($v['ot_manual']) : '';
             $otManual = $otRaw === '' ? null : (int)preg_replace('/\D/', '', $otRaw);   // empty = calculated from scans, 0 = no lembur
-            if (!$num('target') && !$num('sales') && !$num('other_bonus') && $otManual === null) { q('DELETE FROM web_bonus WHERE period_to = ? AND pegawai_id = ?', [$to, (int)$id]); continue; }
-            q('REPLACE INTO web_bonus (period_to, pegawai_id, target, sales, sales_bonus, other_bonus, note, sales_source, updated_by, ot_manual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [$to, (int)$id, $num('target'), $num('sales'), $sb, $num('other_bonus'), mb_substr(trim(isset($v['note']) ? $v['note'] : ''), 0, 200), $source, actor(), $otManual]);
+            if (!$num('target') && !$num('sales') && !$num('other_bonus') && $otManual === null && !$num('trip_driver') && !$num('trip_alone')) { q('DELETE FROM web_bonus WHERE period_to = ? AND pegawai_id = ?', [$to, (int)$id]); continue; }
+            q('REPLACE INTO web_bonus (period_to, pegawai_id, target, sales, sales_bonus, other_bonus, note, sales_source, updated_by, ot_manual, trip_driver, trip_alone) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$to, (int)$id, $num('target'), $num('sales'), $sb, $num('other_bonus'), mb_substr(trim(isset($v['note']) ? $v['note'] : ''), 0, 200), $source, actor(), $otManual, $num('trip_driver'), $num('trip_alone')]);
             $n++;
         }
         audit($action, "$to: $n karyawan");
@@ -437,15 +437,17 @@ elseif ($p === 'bonus'):
   <?php if (!erp_enabled()): ?><div class="notice"><div><b>WAU ERP belum terhubung</b>Isi erp_token di config.php (sama dengan hr_api_token di secret WAU ERP) agar realisasi penjualan bisa diambil dari surat jalan.</div></div><?php endif; ?>
   <form method="post"><?= $csrf ?><input type="hidden" name="action" value="bonus_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
   <div class="tablecard"><div class="tablescroll"><table>
-    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th title="Isi untuk mengganti lembur hasil hitung scan; kosong = hitung otomatis, 0 = tanpa lembur">Lembur manual (Rp)</th><th>Keterangan</th></tr></thead><tbody>
+    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th title="Trip antar gudang sebagai driver (Rp10.000 per trip)">Trip driver</th><th title="Trip antar tanpa bantuan kernet/driver (Rp5.000 per trip)">Trip sendiri</th><th title="Isi untuk mengganti lembur hasil hitung scan; kosong = hitung otomatis, 0 = tanpa lembur">Lembur manual (Rp)</th><th>Keterangan</th></tr></thead><tbody>
     <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; if (empty($pays[$id])) continue;
-        $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => '', 'sales_source' => '', 'ot_manual' => null];
+        $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => '', 'sales_source' => '', 'ot_manual' => null, 'trip_driver' => 0, 'trip_alone' => 0];
         list(, $pct) = sales_bonus($v['target'], $v['sales'], $tiers); $tot += $v['sales_bonus'] + $v['other_bonus'];
         $money = function ($k) use ($v, $id) { return '<input type="text" inputmode="numeric" name="b[' . $id . '][' . $k . ']" value="' . ($v[$k] ? h(number_format($v[$k], 0, ',', '.')) : '') . '" style="width:140px;text-align:right" placeholder="0">'; }; ?>
       <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span></td>
         <td><input type="text" name="b[<?= $id ?>][code]" value="<?= h(isset($codes[$id]) ? $codes[$id] : '') ?>" maxlength="10" style="width:70px;text-transform:uppercase" placeholder="—"></td>
         <td><?= $money('target') ?></td><td><?= $money('sales') ?><?php if ($v['sales_source'] !== ''): ?><br><small class="muted"><?= h($v['sales_source']) ?></small><?php endif; ?></td><td class="num"><?= $v['target'] ? str_replace('.', ',', $pct) . '%' : '' ?></td>
         <td class="num"><b><?= $v['sales_bonus'] ? rupiah($v['sales_bonus']) : '' ?></b></td><td><?= $money('other_bonus') ?></td>
+        <td><input type="text" inputmode="numeric" name="b[<?= $id ?>][trip_driver]" value="<?= $v['trip_driver'] ?: '' ?>" style="width:60px"></td>
+        <td><input type="text" inputmode="numeric" name="b[<?= $id ?>][trip_alone]" value="<?= $v['trip_alone'] ?: '' ?>" style="width:60px"></td>
         <td><input type="text" inputmode="numeric" name="b[<?= $id ?>][ot_manual]" value="<?= $v['ot_manual'] !== null ? h(number_format($v['ot_manual'], 0, ',', '.')) : '' ?>" style="width:140px" placeholder="otomatis"></td>
         <td><input type="text" name="b[<?= $id ?>][note]" value="<?= h($v['note']) ?>" maxlength="200" style="width:180px"></td></tr>
     <?php endforeach; ?>
@@ -757,6 +759,8 @@ else:
                                 'attend_bonus_gudang' => 'Insentif kehadiran gudang (Rp; nama departemen/kantor memuat "gudang")',
                                 'dl_weekday' => 'Uang DL per hari dinas luar (Rp; ditandai di Input Cepat)',
                                 'dl_saturday' => 'Uang DL hari Sabtu (Rp)',
+                                'trip_driver' => 'Gudang: insentif per trip sebagai driver (Rp)',
+                                'trip_alone' => 'Gudang: insentif per trip sendiri, tanpa bantuan (Rp)',
                                 'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)',
                                 'umr' => 'UMR/UMK daerah (Rp / bulan, 0 = tidak dicek): gaji pokok + tunjangan tetap di bawahnya diberi tanda di Data gaji karyawan',
                                 'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],
