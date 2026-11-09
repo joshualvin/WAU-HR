@@ -198,7 +198,8 @@ page_header('Input Cepat', 'quick.php');
     $nIn = count(array_filter($plan, function ($p) { return $p['in']; }));
     $nOut = count(array_filter($plan, function ($p) { return $p['out']; }));
     $nLeave = count(array_filter($plan, function ($p) { return $p['leave']; }));
-    $total = $nIn + $nOut + $nLeave; ?>
+    $nDl = $dl ? count(array_filter($plan, function ($p) use ($skipOff) { return !($p['r']['off'] && $skipOff); })) : 0;   // days that get the DL mark, even when all their scans exist
+    $total = $nIn + $nOut + $nLeave + $nDl; ?>
 <div class="card" id="preview">
   <div class="page-head">
     <h2 style="margin:0">3. Periksa dan Simpan</h2>
@@ -206,13 +207,13 @@ page_header('Input Cepat', 'quick.php');
       <?= csrf_field() ?>
       <?php foreach ($picked as $p): ?><input type="hidden" name="emp[]" value="<?= (int)$p ?>"><?php endforeach; ?>
       <?php foreach (['from' => $from, 'to' => $to, 'mode' => $mode, 'noscan' => $noscan, 'ns_time' => $nsTime, 'times' => $times, 't_in' => $tIn, 't_out' => $tOut, 'jenis' => $jenisLeave, 'kat' => $kat, 'note' => $note,
-                      'skip_off' => $skipOff ? '1' : '0', 'approved' => $approved ? '1' : '0'] as $k => $v): ?>
+                      'skip_off' => $skipOff ? '1' : '0', 'approved' => $approved ? '1' : '0', 'dl' => $dl ? '1' : '0'] as $k => $v): ?>
         <input type="hidden" name="<?= $k ?>" value="<?= h($v) ?>">
       <?php endforeach; ?>
       <button class="btn primary" <?= $total ? '' : 'disabled' ?>>Simpan <?= $total ?> data</button>
     </form>
   </div>
-  <p class="muted"><?= $mode === 'scan' ? "$nIn masuk dan $nOut pulang" : ($mode === 'noscan' ? ($nIn + $nOut) . ' tidak scan' : "$nLeave hari izin") ?> untuk <?= count($picked) ?> pegawai, <?= h(fmt_date($from)) ?> – <?= h(fmt_date($to)) ?>.</p>
+  <p class="muted"><?= $mode === 'scan' ? "$nIn masuk dan $nOut pulang" : ($mode === 'noscan' ? ($nIn + $nOut) . ' tidak scan' : "$nLeave hari izin") ?> <?= $nDl ? "· $nDl hari ditandai dinas luar " : '' ?>untuk <?= count($picked) ?> pegawai, <?= h(fmt_date($from)) ?> – <?= h(fmt_date($to)) ?>.</p>
   <div class="table-wrap"><table>
     <tr><th>Pegawai</th><th>Tanggal</th><th>Scan saat ini</th><th>Akan ditambah</th></tr>
     <?php foreach ($plan as $p): $r = $p['r']; ?>
