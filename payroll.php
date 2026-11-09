@@ -39,6 +39,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash($action === 'rb_approve' ? 'Klaim disetujui; dibayar bersama gaji periode berikutnya.' : 'Klaim ditolak.');
         }
         redirect(safe_back(post('back'), 'payroll.php?p=reimburse'));
+    } elseif ($action === 'rb_add') {   // HR enters an approved claim for an employee (e.g. bensin for errands)
+        $amt = (int)preg_replace('/\D/', '', post('jumlah'));
+        $emp = q('SELECT pegawai_id, pegawai_nama FROM pegawai WHERE pegawai_id = ?', [(int)post('pegawai_id')])->fetch();
+        if (!$emp || $amt <= 0 || !valid_date(post('tgl')) || !in_array(post('kategori'), reimburse_categories(), true)) flash('Isi pegawai, tanggal, kategori dan jumlah klaim dengan benar.', 'err');
+        else {
+            q('INSERT INTO web_reimburse (pegawai_id, tgl, kategori, jumlah, keterangan, file, status, created_at, decided_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$emp['pegawai_id'], post('tgl'), post('kategori'), $amt, mb_substr(trim(post('keterangan')), 0, 255), '', CLAIM_APPROVED, date('Y-m-d H:i:s'), actor()]);
+            audit('rb_add', "{$emp['pegawai_nama']} " . post('kategori') . " $amt");
+            flash('Klaim ' . h($emp['pegawai_nama']) . ' ' . rupiah($amt) . ' disimpan dan disetujui; dibayar bersama gaji periode berikutnya.');
+        }
+        redirect('payroll.php?p=reimburse&s=' . CLAIM_APPROVED);
     } elseif ($action === 'unpublish') {
         q('UPDATE web_payslip SET published = 0 WHERE period_to = ?', [$to]);
         audit('payroll_unpublish', $to);
@@ -387,6 +398,13 @@ elseif ($p === 'reimburse'):
     $rows = q('SELECT r.*, p.pegawai_nama, p.pegawai_pin FROM web_reimburse r JOIN pegawai p ON p.pegawai_id = r.pegawai_id WHERE r.status = ? ORDER BY r.tgl DESC, r.id DESC LIMIT 500', [$state])->fetchAll();
     $back = h($_SERVER['REQUEST_URI']);
     hris_header('Reimbursement', 'payroll', 'payroll.php?p=reimburse', 'Penggajian'); ?>
+  <form method="post" class="section" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px"><?= $csrf ?><input type="hidden" name="action" value="rb_add">
+    <label class="field"><span>Karyawan</span><select name="pegawai_id" required><?php foreach (employees(true) as $e): ?><option value="<?= (int)$e['pegawai_id'] ?>"><?= h($e['pegawai_nama']) ?></option><?php endforeach; ?></select></label>
+    <label class="field"><span>Tanggal</span><input type="date" name="tgl" value="<?= h($to) ?>" required></label>
+    <label class="field"><span>Kategori</span><select name="kategori"><?php foreach (reimburse_categories() as $c): ?><option><?= h($c) ?></option><?php endforeach; ?></select></label>
+    <label class="field"><span>Jumlah (Rp)</span><input type="text" inputmode="numeric" name="jumlah" required style="width:120px"></label>
+    <label class="field" style="flex:1 1 220px"><span>Keterangan</span><input type="text" name="keterangan" maxlength="255" placeholder="mis. Bensin 17 trip × 15 km × Rp500"></label>
+    <button class="btn primary">Tambah klaim (langsung disetujui)</button></form>
   <div class="counters" style="grid-template-columns:repeat(3,minmax(0,1fr))">
     <?php foreach ([CLAIM_PENDING => 'Menunggu persetujuan', CLAIM_APPROVED => 'Disetujui', CLAIM_REJECTED => 'Ditolak'] as $k => $label): $c = isset($cnt[$k]) ? $cnt[$k] : ['n' => 0, 't' => 0]; ?>
       <a class="counter<?= $state === $k ? ' on' : '' ?>" href="payroll.php?p=reimburse&s=<?= $k ?>"><b><?= (int)$c['n'] ?></b><span><?= $label ?> · <?= rupiah($c['t']) ?></span></a>
