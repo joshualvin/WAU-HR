@@ -9,6 +9,7 @@ $tabs = [
     'kartu'     => 'Kartu Scanlog',
     'harian'    => 'Rincian Harian',
     'rekap'     => 'Rekap Periode',
+    'dl'        => 'Dinas Luar',
     'cutin'     => 'Cuti Normatif',
     'cutip'     => 'Cuti Pribadi',
     'terlambat' => 'Datang Terlambat',
@@ -223,6 +224,20 @@ switch ($tab) {
                        $s['ot'] ?: '', $s['otM'] ? fmt_minutes($s['otM']) : '',
                        $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', $s['offWork'] ?: '', fmt_minutes($s['min'])];
         }
+        break;
+
+    case 'dl':
+        require_once __DIR__ . '/dl.php';
+        ensure_dl_tables();
+        $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari DL', 'Sabtu', 'Tanggal'];
+        $dlRows = [];
+        foreach (dl_days($from, $to) as $id => $dates) {
+            if (!isset($byId[$id]) || !$wanted($byId[$id]['pegawai_pin'])) continue;
+            $dlRows[] = [$byId[$id]['pegawai_pin'], $byId[$id]['pegawai_nip'], $byId[$id]['pegawai_nama'], $byId[$id]['jab'], $byId[$id]['dep'],
+                         count($dates), count(array_filter($dates, function ($d) { return date('N', strtotime($d)) == 6; })) ?: '', dl_ranges($dates)];
+        }
+        usort($dlRows, function ($a, $b) { return (int)$a[0] <=> (int)$b[0]; });
+        $data = $dlRows;
         break;
 
     case 'cutin':

@@ -100,4 +100,5 @@ check('no incentive with an absent day', attendance_incentive(1, 19, false, $ai)
 check('no incentive without any day present', attendance_incentive(0, 0, false, $ai), 0);
 require_once __DIR__ . '/../inc/dl.php';
 check('DL: 15 weekdays + 2 Saturdays', dl_pay(['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-10'], $ai), [125000 * 2 + 112500 * 2, 2, 2]);
+check('DL ranges', dl_ranges(['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-05', '2026-10-14']), 'Kam 01-10 s/d Sen 05-10, Rab 14-10');
 echo "payroll_test: $ok checks passed\n";
