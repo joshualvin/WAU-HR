@@ -65,7 +65,7 @@ function payroll_defaults()
     return [
         'kes_co' => 4, 'kes_emp' => 1, 'kes_cap' => 12000000,           // BPJS Kesehatan, Perpres 64/2020
         'jht_co' => 3.7, 'jht_emp' => 2,                                  // JHT
-        'jp_co' => 2, 'jp_emp' => 1, 'jp_cap' => 10547400,                // JP; wage cap is updated every March
+        'jp_co' => 2, 'jp_emp' => 1, 'jp_cap' => 11086300,                // JP; wage cap is updated every March (2026: Rp11.086.300)
         'jkk' => 0.24, 'jkm' => 0.3,                                      // JKK (0.24-1.74 by risk group), JKM
         'ot_divisor' => 173,                                              // hourly wage = monthly wage / 173 (PP 35/2021)
         'late_per_minute' => 0,                                           // company rule, rupiah per late minute

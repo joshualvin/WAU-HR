@@ -30,7 +30,7 @@ check('jht co', $b['jht_co'], 370000); check('jht emp', $b['jht_emp'], 200000);
 check('jp co', $b['jp_co'], 200000); check('jp emp', $b['jp_emp'], 100000);
 check('jkk', $b['jkk'], 24000); check('jkm', $b['jkm'], 30000);
 $b = bpjs(['gaji_pokok' => 20000000, 'tunjangan' => 0, 'bpjs_kes' => 1, 'bpjs_tk' => 1, 'bpjs_jp' => 1], $s);
-check('kes capped', $b['kes_emp'], 120000); check('jp capped', $b['jp_emp'], 105474);
+check('kes capped', $b['kes_emp'], 120000); check('jp capped', $b['jp_emp'], 110863);
 // Overtime: hourly 100,000; work day 2h = 1.5 + 2 = 3.5x; rest day 9h = 7*2 + 3 + 4 = 21x
 check('ot workday 2h', overtime_pay(120, 100000, false), 350000);
 check('ot workday 30m', overtime_pay(30, 100000, false), 75000);
