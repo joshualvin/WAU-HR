@@ -200,7 +200,10 @@ switch ($tab) {
 
     case 'rekap':
         $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Terlambat (x)', 'Terlambat (jam)', 'Pulang awal (x)', 'Pulang awal (jam)',
-                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Masuk di hari libur', 'Total durasi'];
+                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Masuk di hari libur', 'Dinas luar (hari)', 'Total durasi'];
+        require_once __DIR__ . '/dl.php';
+        ensure_dl_tables();
+        $dlMarked = dl_days($from, $to);
         $sum = [];
         foreach ($daily() as $r) {
             $k = $r['pin'];
@@ -222,7 +225,8 @@ switch ($tab) {
             $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'],
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
                        $s['ot'] ?: '', $s['otM'] ? fmt_minutes($s['otM']) : '',
-                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', $s['offWork'] ?: '', fmt_minutes($s['min'])];
+                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', $s['offWork'] ?: '',
+                       isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '', fmt_minutes($s['min'])];
         }
         break;
 
