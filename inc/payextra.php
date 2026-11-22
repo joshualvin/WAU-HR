@@ -36,6 +36,11 @@ function ensure_payextra_tables()
         pegawai_id INT NOT NULL PRIMARY KEY,
         code VARCHAR(10) NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+    // driver code in WAU ERP's main system (masterkaryawan, e.g. K04) per employee, for taking the days driven from the trips there
+    db()->exec("CREATE TABLE IF NOT EXISTS web_driver_code (
+        pegawai_id INT NOT NULL PRIMARY KEY,
+        code VARCHAR(10) NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
     db()->exec("CREATE TABLE IF NOT EXISTS web_loan (
         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
         pegawai_id INT NOT NULL,

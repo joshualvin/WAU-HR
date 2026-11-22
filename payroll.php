@@ -43,6 +43,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $yr = (int)post('year');
         $n = 0;
         foreach (isset($_POST['y']) ? (array)$_POST['y'] : [] as $id => $v) {
+            $dcode = strtoupper(trim(isset($v['dcode']) ? $v['dcode'] : ''));
+            if ($dcode === '') q('DELETE FROM web_driver_code WHERE pegawai_id = ?', [(int)$id]);
+            else q('REPLACE INTO web_driver_code (pegawai_id, code) VALUES (?, ?)', [(int)$id, mb_substr($dcode, 0, 10)]);
+            if ($trips !== null && $dcode !== '') {   // days this employee drove as driver, and trips with only one kernet, in the period
+                $v['trip_driver'] = isset($trips[$dcode]) ? (string)$trips[$dcode]['days'] : '0';
+                $v['trip_alone'] = isset($trips[$dcode]) ? (string)$trips[$dcode]['alone'] : '0';
+                $usedDrv[$dcode] = true;
+            }
             $num = function ($k) use ($v) { return isset($v[$k]) ? (int)preg_replace('/\D/', '', $v[$k]) : 0; };
             if (!$num('months') && !$num('bruto') && !$num('iuran') && !$num('pph')) { q('DELETE FROM web_pph_open WHERE year = ? AND pegawai_id = ?', [$yr, (int)$id]); continue; }
             q('REPLACE INTO web_pph_open (year, pegawai_id, months, bruto, iuran, pph) VALUES (?, ?, ?, ?, ?, ?)', [$yr, (int)$id, min(11, $num('months')), $num('bruto'), $num('iuran'), $num('pph')]);
@@ -72,10 +80,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $n = 0;
         $old = bonuses_for_period($to);
         $erp = null;
+        $trips = null; $tripErr = null;
         if ($action === 'bonus_erp') {
             list($erp, $err) = erp_sales($from, $to);
             if ($err) { flash($err, 'err'); redirect('payroll.php?' . http_build_query(['p' => 'bonus', 'from' => $from, 'to' => $to])); }
+            list($trips, $tripErr) = erp_trips($from, $to);   // days driven and trips with one kernet, from the trips in the main system
+            if ($tripErr) { flash('Hari driver tidak diambil: ' . $tripErr, 'err'); $trips = null; }
         }
+        $usedDrv = [];
         $used = [];
         foreach (isset($_POST['b']) ? (array)$_POST['b'] : [] as $id => $v) {
             $code = strtoupper(trim(isset($v['code']) ? $v['code'] : ''));
@@ -100,6 +112,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         audit($action, "$to: $n karyawan");
         flash("Bonus $n karyawan disimpan; ikut dihitung saat gaji periode ini disimpan.");
+        if ($trips !== null) {
+            $left = [];
+            foreach ($trips as $code => $d) if (!isset($usedDrv[$code]) && $d['days']) $left[] = "$code ({$d['name']}) {$d['days']} hari";
+            flash('Hari driver dan trip sendiri diambil dari trip WAU ERP (' . fmt_date($from) . ' – ' . fmt_date($to) . ').' . ($left ? ' Kode driver belum dipasangkan ke karyawan: ' . implode('; ', $left) . '.' : ''), $left ? 'err' : 'ok');
+        }
         if ($erp !== null) {
             $left = [];
             foreach ($erp as $code => $s) if (!isset($used[$code]) && $s['invoiced']) $left[] = ($code === '' ? 'tanpa sales' : "$code ({$s['name']})") . ' ' . rupiah($s['invoiced']);
@@ -461,13 +478,14 @@ elseif ($p === 'bonus'):
     $rows = bonuses_for_period($to);
     $pays = pay_data();
     $codes = q('SELECT pegawai_id, code FROM web_sales_code')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $dcodes = q('SELECT pegawai_id, code FROM web_driver_code')->fetchAll(PDO::FETCH_KEY_PAIR);
     $tot = 0;
     hris_header('Bonus penjualan', 'payroll', 'payroll.php?p=bonus', 'Penggajian'); ?>
   <?= $periodPicker('bonus') ?>
   <?php if (!erp_enabled()): ?><div class="notice"><div><b>WAU ERP belum terhubung</b>Isi erp_token di config.php (sama dengan hr_api_token di secret WAU ERP) agar realisasi penjualan bisa diambil dari surat jalan.</div></div><?php endif; ?>
   <form method="post"><?= $csrf ?><input type="hidden" name="action" value="bonus_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
   <div class="tablecard"><div class="tablescroll"><table>
-    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th title="Jumlah hari menyetir sebagai driver (Rp10.000 per hari)">Hari driver</th><th title="Jumlah trip kirim sendiri, hanya dengan 1 kernet (Rp5.000 per trip)">Trip sendiri</th><th title="Isi untuk mengganti lembur hasil hitung scan; kosong = hitung otomatis, 0 = tanpa lembur">Lembur manual (Rp)</th><th>Keterangan</th></tr></thead><tbody>
+    <thead><tr><th>Nama karyawan</th><th title="Kode salesman di WAU ERP (mastersalesman)">Kode sales ERP</th><th>Target penjualan</th><th>Realisasi penjualan</th><th class="num">Capaian</th><th class="num">Bonus penjualan</th><th>Bonus lain</th><th title="Kode driver di sistem utama (master karyawan, mis. K04 = Ferdy sebagai driver): Hari driver dan Trip sendiri diambil dari trip di WAU ERP">Kode driver ERP</th><th title="Jumlah hari menyetir sebagai driver (Rp10.000 per hari)">Hari driver</th><th title="Jumlah trip kirim sendiri, hanya dengan 1 kernet (Rp5.000 per trip)">Trip sendiri</th><th title="Isi untuk mengganti lembur hasil hitung scan; kosong = hitung otomatis, 0 = tanpa lembur">Lembur manual (Rp)</th><th>Keterangan</th></tr></thead><tbody>
     <?php foreach (employees(true) as $e): $id = (int)$e['pegawai_id']; if (empty($pays[$id])) continue;
         $v = isset($rows[$id]) ? $rows[$id] : ['target' => 0, 'sales' => 0, 'sales_bonus' => 0, 'other_bonus' => 0, 'note' => '', 'sales_source' => '', 'ot_manual' => null, 'trip_driver' => 0, 'trip_alone' => 0];
         list(, $pct) = sales_bonus($v['target'], $v['sales'], $tiers); $tot += $v['sales_bonus'] + $v['other_bonus'];
@@ -476,6 +494,7 @@ elseif ($p === 'bonus'):
         <td><input type="text" name="b[<?= $id ?>][code]" value="<?= h(isset($codes[$id]) ? $codes[$id] : '') ?>" maxlength="10" style="width:70px;text-transform:uppercase" placeholder="—"></td>
         <td><?= $money('target') ?></td><td><?= $money('sales') ?><?php if ($v['sales_source'] !== ''): ?><br><small class="muted"><?= h($v['sales_source']) ?></small><?php endif; ?></td><td class="num"><?= $v['target'] ? str_replace('.', ',', $pct) . '%' : '' ?></td>
         <td class="num"><b><?= $v['sales_bonus'] ? rupiah($v['sales_bonus']) : '' ?></b></td><td><?= $money('other_bonus') ?></td>
+        <td><input type="text" name="b[<?= $id ?>][dcode]" value="<?= h(isset($dcodes[$id]) ? $dcodes[$id] : '') ?>" maxlength="10" style="width:70px;text-transform:uppercase" placeholder="—"></td>
         <td><input type="text" inputmode="numeric" name="b[<?= $id ?>][trip_driver]" value="<?= $v['trip_driver'] ?: '' ?>" style="width:60px"></td>
         <td><input type="text" inputmode="numeric" name="b[<?= $id ?>][trip_alone]" value="<?= $v['trip_alone'] ?: '' ?>" style="width:60px"></td>
         <td><input type="text" inputmode="numeric" name="b[<?= $id ?>][ot_manual]" value="<?= $v['ot_manual'] !== null ? h(number_format($v['ot_manual'], 0, ',', '.')) : '' ?>" style="width:140px" placeholder="otomatis"></td>
@@ -483,7 +502,7 @@ elseif ($p === 'bonus'):
     <?php endforeach; ?>
     </tbody></table></div></div>
   <div class="formfoot"><span class="muted" style="margin-right:auto">Total bonus periode ini: <b><?= rupiah($tot) ?></b>. Bonus termasuk penghasilan bruto PPh 21 bulan ini. Hanya karyawan yang punya data gaji yang tampil.</span>
-    <?php if (erp_enabled()): ?><button class="btn" name="action" value="bonus_erp" title="Isi realisasi penjualan karyawan yang punya kode sales dengan nilai surat jalan periode ini">Ambil dari ERP</button><?php endif; ?>
+    <?php if (erp_enabled()): ?><button class="btn" name="action" value="bonus_erp" title="Isi realisasi penjualan karyawan yang punya kode sales dengan nilai surat jalan periode ini, dan Hari driver / Trip sendiri karyawan yang punya kode driver dengan trip periode ini">Ambil dari ERP</button><?php endif; ?>
     <button class="btn primary">Simpan bonus</button></div></form>
   <form method="post" class="section" style="margin-top:16px"><?= $csrf ?><input type="hidden" name="action" value="tier_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
     <h2>Skema bonus penjualan</h2>
