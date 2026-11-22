@@ -27,5 +27,7 @@ return [
     // Careers site (cv-upload) link for Rekrutmen: its address and the HR_API_TOKEN set there
     'career_url'   => 'https://career.wautama.com',
     'career_token' => '',
+    'gudang_expect_open' => '08:00',   // the home card shows "Belum buka" when nobody has scanned by this time
+    'gudang_opener_pin' => '9001',   // report "Jam Gudang": PIN whose first / last scan on the Margo machines is the warehouse open / close time
     'anthropic_api_key' => '',   // HR assistant (assistant.php): API key from console.anthropic.com; also run "composer install"
 ];

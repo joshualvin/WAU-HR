@@ -271,6 +271,18 @@ if ($m === 'home'):
           <div><i class="dot" style="background:var(--bad)"></i><span>Belum / tidak scan</span><span class="n"><?= $c['absent'] ?></span><span class="p"></span></div>
           <div><i class="dot" style="background:var(--line)"></i><span>Libur</span><span class="n"><?= $c['off'] ?></span><span class="p"></span></div>
         </div></div><div class="wfoot"><a href="hr.php?m=attendance">Lihat kehadiran ›</a></div></div>
+      <?php require_once __DIR__ . '/inc/gudang.php';
+            $gs = gudang_scans($today, $today);
+            $expectOpen = isset($CONFIG['gudang_expect_open']) ? $CONFIG['gudang_expect_open'] : '08:00';
+            $gst = gudang_state(isset($gs['days'][$today]['t']) ? $gs['days'][$today]['t'] : [], date('H:i'), $expectOpen);
+            $sun = date('N') == 7; ?>
+      <div class="card widget"><div class="wbody"><h2>Gudang hari ini</h2>
+        <?php if ($sun): ?><div style="font-size:22px;font-weight:600;color:var(--muted)">Libur</div>
+        <?php elseif ($gst['open']): ?><div style="font-size:32px;font-weight:600;color:var(--ok)">Buka <?= h($gst['open']) ?></div>
+          <div class="muted"><?= $gst['close'] ? 'Tutup ' . h($gst['close']) . ' · ' : '' ?>scan Kabag gudang di <?= h(implode(', ', array_keys($gs['days'][$today]['m']))) ?></div>
+        <?php else: ?><div style="font-size:26px;font-weight:600;color:<?= $gst['state'] === 'late' ? 'var(--bad)' : 'var(--muted)' ?>"><?= $gst['state'] === 'late' ? 'Belum buka' : 'Belum ada scan' ?></div>
+          <div class="muted">Belum ada scan Kabag gudang di mesin Margo<?= $gst['state'] === 'late' ? ' (lewat ' . h($expectOpen) . ')' : '' ?>.</div><?php endif; ?>
+      </div><div class="wfoot"><a href="hr.php?m=report&tab=gudang">Lihat jam gudang ›</a></div></div>
       <?php $otPend = (int)q('SELECT COUNT(*) FROM web_overtime WHERE status = ?', [CLAIM_PENDING])->fetchColumn();
             $rbPend = (int)q('SELECT COUNT(*) FROM web_reimburse WHERE status = ?', [CLAIM_PENDING])->fetchColumn(); ?>
       <div class="card widget"><div class="wbody"><h2>Menunggu persetujuan</h2>
@@ -752,6 +764,8 @@ elseif ($m === 'reports'):
             'scan1x' => ['Scan tidak lengkap', 'Hari dengan hanya satu scan (lupa scan masuk atau pulang).'],
             'luar' => ['Masuk di hari libur', 'Scan pada hari libur atau di luar jadwal.'],
             'tahunan' => ['Rekap tahunan', 'Hadir, terlambat, tidak hadir dan cuti per bulan dalam satu tahun.'],
+            'gudang' => ['Jam gudang', 'Jam gudang buka dan tutup per hari, dari scan pertama dan terakhir Kabag gudang di mesin Margo.'],
+            'dl' => ['Dinas luar', 'Hari dinas luar per karyawan dengan rentang tanggalnya.'],
         ],
         'Cuti & Izin' => [
             'izin' => ['Cuti & izin', 'Semua cuti dan izin dalam periode, dengan status persetujuan.'],
@@ -775,7 +789,7 @@ elseif ($m === 'reports'):
 // ======================================================================= Laporan (one report)
 elseif ($m === 'report'):
     $titles = ['rekap' => 'Ringkasan kehadiran', 'harian' => 'Detail kehadiran', 'kartushift' => 'Kartu shift', 'scanlog' => 'Log kehadiran', 'terlambat' => 'Keterlambatan',
-               'pulang' => 'Pulang awal', 'lembur' => 'Lembur', 'scan1x' => 'Scan tidak lengkap', 'luar' => 'Masuk di hari libur', 'tahunan' => 'Rekap tahunan',
+               'pulang' => 'Pulang awal', 'lembur' => 'Lembur', 'scan1x' => 'Scan tidak lengkap', 'luar' => 'Masuk di hari libur', 'tahunan' => 'Rekap tahunan', 'gudang' => 'Jam gudang', 'dl' => 'Dinas luar',
                'izin' => 'Cuti & izin', 'saldo' => 'Saldo cuti', 'cutin' => 'Cuti normatif', 'cutip' => 'Cuti pribadi', 'karyawan' => 'Data karyawan', 'kartu' => 'Kartu scanlog'];
     $q = ['m' => 'report', 'tab' => $tab, 'from' => $from, 'to' => $to, 'pegawai_id' => $pid, 'dept' => $dept, 'sort' => $sort, 'jenis' => $jenis, 'min' => $minDur, 'year' => $year];
     $perPage = 200;

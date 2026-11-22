@@ -10,6 +10,7 @@ $tabs = [
     'harian'    => 'Rincian Harian',
     'rekap'     => 'Rekap Periode',
     'dl'        => 'Dinas Luar',
+    'gudang'    => 'Jam Gudang',
     'cutin'     => 'Cuti Normatif',
     'cutip'     => 'Cuti Pribadi',
     'terlambat' => 'Datang Terlambat',
@@ -228,6 +229,30 @@ switch ($tab) {
                        $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', $s['offWork'] ?: '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '', fmt_minutes($s['min'])];
         }
+        break;
+
+    case 'gudang':   // warehouse open / close time: the head of the warehouse's first and last scan of the day on the Margo machines
+        require_once __DIR__ . '/gudang.php';
+        $pin = gudang_pin();
+        $headers = ['Tanggal', 'Hari', 'Gudang buka', 'Gudang tutup', 'Lama buka', 'Jumlah scan', 'Mesin'];
+        $g = gudang_scans($from, $to);
+        $margo = $g['margo'];
+        $days = $g['days'];
+        $dn = [1 => 'Sen', 2 => 'Sel', 3 => 'Rab', 4 => 'Kam', 5 => 'Jum', 6 => 'Sab', 7 => 'Min'];
+        $openMin = $closeMin = [];
+        $hm = function ($t) { return (int)substr($t, 0, 2) * 60 + (int)substr($t, 3, 2); };
+        foreach ($days as $d => $v) {
+            $open = min($v['t']);
+            $close = count($v['t']) > 1 ? max($v['t']) : null;
+            $openMin[] = $hm($open);
+            if ($close) $closeMin[] = $hm($close);
+            $data[] = [date('d-m-Y', strtotime($d)), $dn[date('N', strtotime($d))], $open, $close ?: '(1 scan saja)', $close ? fmt_minutes($hm($close) - $hm($open)) : '', count($v['t']), implode(', ', array_keys($v['m']))];
+        }
+        $avg = function ($a) { return $a ? sprintf('%02d:%02d', intdiv((int)round(array_sum($a) / count($a)), 60), (int)round(array_sum($a) / count($a)) % 60) : '-'; };
+        $work = 0;   // Monday-Saturday in the period without a scan of this person on the Margo machines
+        for ($t = strtotime($from); $t <= strtotime($to) && $t <= time(); $t += 86400) if (date('N', $t) < 7 && !isset($days[date('Y-m-d', $t)])) $work++;
+        $side = [['Ringkasan (PIN ' . $pin . ', mesin ' . ($margo ? implode(' / ', $margo) : 'Margo tidak ditemukan') . ')', ['Keterangan', 'Nilai'],
+                  [['Hari dengan scan', count($days)], ['Rata-rata gudang buka', $avg($openMin)], ['Rata-rata gudang tutup', $avg($closeMin)], ['Senin-Sabtu tanpa scan di Margo', $work]]]];
         break;
 
     case 'dl':
