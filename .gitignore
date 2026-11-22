@@ -12,3 +12,4 @@ cloud_cli.log
 uploads/files/*
 !uploads/files/.gitkeep
 vendor/
+uploads/auto-pull.log
