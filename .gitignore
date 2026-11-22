@@ -11,3 +11,4 @@ uploads/docs/*
 cloud_cli.log
 uploads/files/*
 !uploads/files/.gitkeep
+vendor/

@@ -27,4 +27,5 @@ return [
     // Careers site (cv-upload) link for Rekrutmen: its address and the HR_API_TOKEN set there
     'career_url'   => 'https://career.wautama.com',
     'career_token' => '',
+    'anthropic_api_key' => '',   // HR assistant (assistant.php): API key from console.anthropic.com; also run "composer install"
 ];
