@@ -188,8 +188,17 @@ page_header('Input Cepat', 'quick.php');
       <div id="noscanOpts" style="padding-left:24px;display:flex;flex-direction:column;gap:6px">
         <div style="display:flex;gap:8px"><select name="noscan"><?= options($noscanNames, $noscan) ?></select>
           <input type="time" name="ns_time" value="<?= h($nsTime) ?>" title="Jam"></div>
-        <span class="muted">Kosongkan jam untuk memakai jam kerja (Masuk) atau jam pulang (Pulang).</span>
+        <span class="muted">Terisi 08:00 untuk Masuk dan 17:00 untuk Pulang. Kosongkan jam untuk memakai jam kerja tiap hari (mis. Sabtu pulang 14:00).</span>
       </div>
+<script>
+// Masuk starts at 08:00 and Pulang at 17:00 so the time picker does not open at the current time; a time typed by hand is kept
+(function () {
+  var s = document.querySelector('select[name=noscan]'), t = s && s.form.querySelector('input[name=ns_time]'), preset = {100: '08:00', 101: '17:00'};
+  if (!t) return;
+  function apply() { if (t.value === '' || t.value === t.dataset.p) { var v = preset[s.value] || ''; t.value = v; t.dataset.p = v; } }
+  s.addEventListener('change', apply); apply();
+})();
+</script>
       <label class="check"><input type="radio" name="mode" value="leave" <?= $mode === 'leave' ? 'checked' : '' ?> onchange="sync()"> <b>Izin / cuti</b> setiap hari:</label>
       <div id="leaveOpts" style="padding-left:24px"><select name="jenis"><?= options($leaveTypes, $jenisLeave) ?></select></div>
       <div class="grid2">

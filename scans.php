@@ -109,6 +109,15 @@ page_header('Absensi', 'scans.php');
     <label class="check"><input type="checkbox" name="approved" value="1" checked> Diizinkan</label>
     <div><button class="btn primary">Simpan</button> <a class="btn" href="<?= h($qs([])) ?>">Batal</a></div>
   </form>
+<script>
+// Masuk starts at 08:00 and Pulang at 17:00 so the time picker does not open at the current time; a time typed by hand is kept
+(function () {
+  var s = document.querySelector('select[name=jenis]'), t = s && s.form.querySelector('input[name=time]'), preset = {100: '08:00', 101: '17:00'};
+  if (!t) return;
+  function apply() { if (t.value === '' || t.value === t.dataset.p) { var v = preset[s.value] || ''; t.value = v; t.dataset.p = v; } }
+  s.addEventListener('change', apply); apply();
+})();
+</script>
 </div>
 <?php endif; ?>
 
