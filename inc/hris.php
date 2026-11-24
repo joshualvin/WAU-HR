@@ -156,6 +156,7 @@ function hris_footer()
   document.getElementById('railtoggle').addEventListener('click', function () { mini = !mini; if (!setpage) try { localStorage.setItem('railmini', mini ? '1' : '0'); } catch (e) {} apply(); });
 })();
 </script>
+<script src="assets/time24.js?v=<?= (int)@filemtime(__DIR__ . '/../assets/time24.js') ?>"></script>
 </body>
 </html>
 <?php
