@@ -188,15 +188,22 @@ page_header('Input Cepat', 'quick.php');
       <div id="noscanOpts" style="padding-left:24px;display:flex;flex-direction:column;gap:6px">
         <div style="display:flex;gap:8px"><select name="noscan"><?= options($noscanNames, $noscan) ?></select>
           <input type="time" name="ns_time" value="<?= h($nsTime) ?>" title="Jam"></div>
-        <span class="muted">Terisi 08:00 untuk Masuk dan 17:00 untuk Pulang. Kosongkan jam untuk memakai jam kerja tiap hari (mis. Sabtu pulang 14:00).</span>
+        <span class="muted">Jam terisi dari jadwal kerja (Masuk = jam masuk, Pulang = jam pulang) untuk pegawai pertama yang dipilih dan tanggalnya. Kosongkan jam agar tiap pegawai memakai jadwalnya sendiri.</span>
       </div>
 <script>
-// Masuk starts at 08:00 and Pulang at 17:00 so the time picker does not open at the current time; a time typed by hand is kept
+// The time starts at the employee's scheduled start (Masuk) or end (Pulang) for that day, so it needs no scrolling on a phone; a time typed by hand is kept
 (function () {
-  var s = document.querySelector('select[name=noscan]'), t = s && s.form.querySelector('input[name=ns_time]'), preset = {100: '08:00', 101: '17:00'};
+  var s = document.querySelector('select[name=noscan]'), f = s && s.form, t = f && f.querySelector('input[name=ns_time]'), sched = null;
   if (!t) return;
-  function apply() { if (t.value === '' || t.value === t.dataset.p) { var v = preset[s.value] || ''; t.value = v; t.dataset.p = v; } }
-  s.addEventListener('change', apply); apply();
+  function apply() { if (!sched || !(t.value === '' || t.value === t.dataset.p)) return; var v = {100: sched.in, 101: sched.out}[s.value] || ''; t.value = v; t.dataset.p = v; }
+  function load() {
+    var pid = (f.querySelector('input[name="emp[]"]:checked') || {}).value || '', d = f.querySelector('input[name=from]').value;
+    fetch('scans.php?sched=1&pegawai_id=' + encodeURIComponent(pid) + '&date=' + encodeURIComponent(d)).then(function (r) { return r.json(); })
+      .then(function (j) { sched = j || {in: '08:00', out: '16:00'}; apply(); }).catch(function () {});
+  }
+  s.addEventListener('change', apply);
+  f.addEventListener('change', function (e) { if (e.target.name !== 'noscan' && e.target.name !== 'ns_time') load(); });
+  load();
 })();
 </script>
       <label class="check"><input type="radio" name="mode" value="leave" <?= $mode === 'leave' ? 'checked' : '' ?> onchange="sync()"> <b>Izin / cuti</b> setiap hari:</label>

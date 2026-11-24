@@ -4,6 +4,16 @@ require __DIR__ . '/inc/bootstrap.php';
 require __DIR__ . '/inc/layout.php';
 require_login();
 
+// ?sched=1&pegawai_id=&date= : that employee's scheduled start and end on that day, to fill in the time of a manual scan
+if (get('sched') !== '') {
+    header('Content-Type: application/json');
+    $pid = (int)get('pegawai_id') ?: (int)q('SELECT pegawai_id FROM pegawai WHERE pegawai_status = 1 ORDER BY pegawai_id LIMIT 1')->fetchColumn();
+    $d = valid_date(get('date')) ? get('date') : date('Y-m-d');
+    list($jk) = work_hours_for($pid, $d);
+    echo json_encode($jk ? ['in' => min_to_hm($jk['start']), 'out' => min_to_hm($jk['end'])] : null);
+    exit;
+}
+
 $addError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
@@ -110,12 +120,19 @@ page_header('Absensi', 'scans.php');
     <div><button class="btn primary">Simpan</button> <a class="btn" href="<?= h($qs([])) ?>">Batal</a></div>
   </form>
 <script>
-// Masuk starts at 08:00 and Pulang at 17:00 so the time picker does not open at the current time; a time typed by hand is kept
+// The time starts at the employee's scheduled start (Masuk) or end (Pulang) for that day, so it needs no scrolling on a phone; a time typed by hand is kept
 (function () {
-  var s = document.querySelector('select[name=jenis]'), t = s && s.form.querySelector('input[name=time]'), preset = {100: '08:00', 101: '17:00'};
+  var s = document.querySelector('select[name=jenis]'), f = s && s.form, t = f && f.querySelector('input[name=time]'), sched = null;
   if (!t) return;
-  function apply() { if (t.value === '' || t.value === t.dataset.p) { var v = preset[s.value] || ''; t.value = v; t.dataset.p = v; } }
-  s.addEventListener('change', apply); apply();
+  function apply() { if (!sched || !(t.value === '' || t.value === t.dataset.p)) return; var v = {100: sched.in, 101: sched.out}[s.value] || ''; t.value = v; t.dataset.p = v; }
+  function load() {
+    var pid = (f.querySelector('[name=pegawai_id]') || {}).value || '', d = f.querySelector('input[name=date]').value;
+    fetch('scans.php?sched=1&pegawai_id=' + encodeURIComponent(pid) + '&date=' + encodeURIComponent(d)).then(function (r) { return r.json(); })
+      .then(function (j) { sched = j || {in: '08:00', out: '16:00'}; apply(); }).catch(function () {});
+  }
+  s.addEventListener('change', apply);
+  f.addEventListener('change', function (e) { if (e.target.name !== 'jenis' && e.target.name !== 'time') load(); });
+  load();
 })();
 </script>
 </div>
