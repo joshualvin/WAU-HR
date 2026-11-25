@@ -199,13 +199,13 @@ switch ($tab) {
             if ($tab === 'luar' && !($r['off'] && $r['scans'])) continue;
             $data[] = [fmt_date($r['date']), $r['pin'], $r['name'], $emp($r['pin'], 'jab'), $emp($r['pin'], 'dep'), $r['jk'] ?: ($r['off'] ? 'Libur' : ''),
                        $r['first'], $r['last'], !empty($r['early_in']) ? fmt_minutes($r['early_in']) : '', $r['late'] ? fmt_minutes($r['late']) : '', $r['early'] ? fmt_minutes($r['early']) : '',
-                       $r['ot'] ? fmt_minutes($r['ot']) : '', fmt_minutes($r['minutes']), $r['scans'] ?: '', ['status' => $r['status']], $note($r)];
+                       $r['ot'] ? (!empty($r['ot_early']) ? fmt_minutes($r['ot'] - $r['ot_early']) . ' + ' . fmt_minutes($r['ot_early']) . ' awal = ' . fmt_minutes($r['ot']) : fmt_minutes($r['ot'])) : '', fmt_minutes($r['minutes']), $r['scans'] ?: '', ['status' => $r['status']], $note($r)];
         }
         break;
 
     case 'rekap':
         $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal (jam)', 'Terlambat (x)', 'Terlambat (jam)', 'Pulang awal (x)', 'Pulang awal (jam)',
-                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti (tanggal)', 'Masuk di hari libur', 'Dinas luar (hari)', 'Dinas luar (tanggal)', 'Driver (hari)', 'Kirim sendiri (trip)', 'Insentif antar', 'Bensin (km)', 'Bensin (Rp)', 'Total durasi'];
+                    'Lembur (x)', 'Lembur setelah pulang (jam)', 'Lembur datang awal (jam)', 'Total lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti (tanggal)', 'Masuk di hari libur', 'Dinas luar (hari)', 'Dinas luar (tanggal)', 'Driver (hari)', 'Kirim sendiri (trip)', 'Insentif antar', 'Bensin (km)', 'Bensin (Rp)', 'Total durasi'];
         require_once __DIR__ . '/payroll.php';
         ensure_payroll_tables();
         $rps = payroll_settings();
@@ -228,7 +228,7 @@ switch ($tab) {
             if ($r['leave']) { $s['leave']++; $s['leaveDays'][] = date('d-m', strtotime($r['date'])) . ' ' . implode('/', $r['leave']); }
             if ($r['late']) { $s['late']++; $s['lateM'] += $r['late']; }
             if ($r['early']) { $s['early']++; $s['earlyM'] += $r['early']; }
-            if ($r['ot']) { $s['ot']++; $s['otM'] += $r['ot']; }
+            if ($r['ot']) { $s['ot']++; $s['otM'] += $r['ot']; $s['otE'] = (isset($s['otE']) ? $s['otE'] : 0) + (isset($r['ot_early']) ? (int)$r['ot_early'] : 0); }
             $s['min'] += (int)$r['minutes'];
             $s['earlyIn'] += isset($r['early_in']) ? (int)$r['early_in'] : 0;
             unset($s);
@@ -236,7 +236,7 @@ switch ($tab) {
         $names = [];
         foreach (array_keys($earlyPaid) as $ep) if (isset($info[$ep])) $names[] = $info[$ep]['pegawai_nama'];
         $side = [['Keterangan', ['Hal', 'Penjelasan'], [
-            ['Datang awal', 'Menit sebelum jam masuk jadwal. Untuk ' . implode(' dan ', $names ?: ['(tidak ada)']) . ' waktu ini sudah termasuk di kolom Lembur (dihitung sekali; kolom Datang awal hanya menunjukkan bagiannya), karena harus ke kantor dulu sebelum ke gudang; untuk karyawan lain hanya dicatat.'],
+            ['Datang awal', 'Menit sebelum jam masuk jadwal. Untuk ' . implode(' dan ', $names ?: ['(tidak ada)']) . ' datang awal dibayar sebagai lembur: Lembur setelah pulang + Lembur datang awal = Total lembur (yang dibayar), karena harus ke kantor dulu sebelum ke gudang; untuk karyawan lain hanya dicatat.'],
             ['Driver / kirim sendiri', 'Dari Penggajian › Rekap gudang untuk periode gaji yang berakhir pada tanggal "s/d": driver Rp' . number_format($rps['trip_driver'], 0, ',', '.') . '/hari, kirim sendiri (1 kernet) Rp' . number_format($rps['trip_alone'], 0, ',', '.') . '/trip.'],
             ['Bensin', 'Perjalanan kantor–gudang pulang-pergi dari Rekap gudang × km × 2 × Rp' . number_format($rps['fuel_per_km'], 0, ',', '.') . '/km; dibayar sebagai reimbursement (tidak kena pajak).'],
             ['Terlambat gudang', 'Karyawan gudang dihitung terlambat dari jam gudang dibuka (scan pertama pembuka di mesin Margo) bila lebih lambat dari jam masuk, dengan toleransi antre.']]]];
@@ -245,7 +245,7 @@ switch ($tab) {
             $fu = fuel_amount(isset($info[$pin], $fuelOf[$info[$pin]['pegawai_id']]) ? $fuelOf[$info[$pin]['pegawai_id']] : [], fuel_routes(), $rps['fuel_per_km']);   // bensin kantor-gudang (reimbursement)
             $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
-                       $s['ot'] ?: '', $s['otM'] ? fmt_minutes($s['otM']) : '',
+                       $s['ot'] ?: '', $s['otM'] - (isset($s['otE']) ? $s['otE'] : 0) ? fmt_minutes($s['otM'] - (isset($s['otE']) ? $s['otE'] : 0)) : '', !empty($s['otE']) ? fmt_minutes($s['otE']) : '', $s['otM'] ? fmt_minutes($s['otM']) : '',
                        $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode(', ', $s['leaveDays']) : '', $s['offWork'] ?: '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? dl_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',

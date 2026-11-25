@@ -701,7 +701,8 @@ function daily_attendance($from, $to, $pegawaiId = null)
             if ($jk && (int)$jk['use_eot'] && $outM !== null && $outM - $jk['end'] >= (int)$jk['min_eot']) {
                 $ot = min($outM - $jk['end'], (int)$jk['max_eot']);
             }
-            if ($jk && $inM !== null && isset($earlyOt[(string)$e['pegawai_pin']])) $ot += early_ot_minutes($inM, $jk['start'], $jk['min_eot'], $jk['max_eot']);
+            $otEarly = $jk && $inM !== null && isset($earlyOt[(string)$e['pegawai_pin']]) ? early_ot_minutes($inM, $jk['start'], $jk['min_eot'], $jk['max_eot']) : 0;
+            $ot += $otEarly;   // 'ot' = total lembur; 'ot_early' = the part from coming in early
 
             $lv = isset($leave[$e['pegawai_id']][$d]) ? $leave[$e['pegawai_id']][$d] : [];
             $missing = null;
@@ -719,7 +720,7 @@ function daily_attendance($from, $to, $pegawaiId = null)
                 'jk' => $jk ? $jk['jk_name'] : null,
                 'first' => $inM !== null ? min_to_hm($inM) : (($outM === null && $mins) ? min_to_hm($mins[0]) : null),
                 'last' => $outM !== null ? min_to_hm($outM) : null,
-                'late' => $late, 'early' => $early, 'ot' => $ot, 'minutes' => $minutes,
+                'late' => $late, 'early' => $early, 'ot' => $ot, 'ot_early' => $otEarly, 'minutes' => $minutes,
                 'early_in' => $jk && $inM !== null && $inM < $jk['start'] ? $jk['start'] - $inM : 0,   // arrived before the scheduled start (lembur only for early_ot_pins)
                 'scans' => count($mins), 'manual' => $manual,
                 'leave' => $lv, 'off' => $off, 'status' => $status, 'missing' => $missing,
