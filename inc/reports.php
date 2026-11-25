@@ -127,6 +127,7 @@ switch ($tab) {
         break;
 
     case 'lembur':   // breakdown: after work + early arrival (Heni, Yanuar) + work on a day off = total, and total minus lateness; minutes
+        $hm = function ($m) { return $m ? ($m < 0 ? '-' : '') . fmt_minutes(abs($m)) : ''; };   // h:mm like Datang awal
         $rows = [];
         foreach ($daily() as $r) {
             $after = $r['ot'] - (isset($r['ot_early']) ? (int)$r['ot_early'] : 0);
@@ -137,7 +138,7 @@ switch ($tab) {
             $rows[] = [$r, $after, $earlyOt, $offWork, $tot];
         }
         if ($jenis === 'rekap') {
-            $headers = ['PIN', 'Nama', 'Departemen', 'Hari lembur', 'Lembur pulang (mnt)', 'Datang awal (mnt)', 'Hari libur (mnt)', 'Total lembur (mnt)', 'Telat (mnt)', 'Lembur - telat (mnt)', 'Total lembur (jam)'];
+            $headers = ['PIN', 'Nama', 'Departemen', 'Hari lembur', 'Lembur pulang', 'Datang awal', 'Hari libur', 'Total lembur', 'Telat', 'Lembur - telat'];
             $sum = [];
             foreach ($daily() as $r) { if ($r['late']) { if (!isset($sum[$r['pin']])) $sum[$r['pin']] = [0, 0, 0, 0, 0, 0]; $sum[$r['pin']][5] += $r['late']; } }
             foreach ($rows as $x) {
@@ -148,14 +149,14 @@ switch ($tab) {
             }
             foreach ($sum as $pin => $v) {
                 if (!$v[0]) continue;
-                $data[] = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'dep'), $v[0], $v[1] ?: '', $v[2] ?: '', $v[3] ?: '', $v[4], $v[5] ?: '', $v[4] - $v[5], fmt_minutes($v[4])];
+                $data[] = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'dep'), $v[0], $hm($v[1]), $hm($v[2]), $hm($v[3]), $hm($v[4]), $hm($v[5]), $hm($v[4] - $v[5])];
             }
         } else {
-            $headers = ['Tanggal', 'PIN', 'Nama', 'Departemen', 'Jam kerja', 'Masuk', 'Pulang', 'Lembur pulang (mnt)', 'Datang awal (mnt)', 'Hari libur (mnt)', 'Total lembur (mnt)', 'Telat (mnt)', 'Lembur - telat (mnt)'];
+            $headers = ['Tanggal', 'PIN', 'Nama', 'Departemen', 'Jam kerja', 'Masuk', 'Pulang', 'Lembur pulang', 'Datang awal', 'Hari libur', 'Total lembur', 'Telat', 'Lembur - telat'];
             foreach ($rows as $x) {
                 $r = $x[0];
                 $data[] = [fmt_date($r['date']), $r['pin'], $r['name'], $emp($r['pin'], 'dep'), $r['jk'] ?: ($r['off'] ?: ''), $r['first'], $r['last'],
-                           $x[1] ?: '', $x[2] ?: '', $x[3] ?: '', $x[4], $r['late'] ?: '', $x[4] - $r['late']];
+                           $hm($x[1]), $hm($x[2]), $hm($x[3]), $hm($x[4]), $hm($r['late']), $hm($x[4] - $r['late'])];
             }
         }
         $side = [['Keterangan', ['Hal', 'Penjelasan'], [
@@ -163,7 +164,7 @@ switch ($tab) {
             ['Datang awal', 'Menit sebelum jam masuk yang dibayar sebagai lembur (Heni dan Yanuar).'],
             ['Hari libur', 'Seluruh jam kerja pada hari libur / di luar jadwal.'],
             ['Total lembur', 'Lembur pulang + datang awal + hari libur.'],
-            ['Lembur - telat', 'Total lembur dikurangi menit terlambat pada hari itu (rekap: dalam periode).']]]];
+            ['Lembur - telat', 'Total lembur dikurangi menit terlambat pada hari itu (rekap: dalam periode). Waktu dalam jam:menit.']]]];
         break;
 
     case 'terlambat':
