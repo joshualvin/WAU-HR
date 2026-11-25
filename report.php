@@ -43,7 +43,7 @@ page_header('Reports', 'report.php');
 <div class="row">
   <div class="card" style="flex:3 1 600px">
     <h2><?= h($tabs[$tab]) ?> <span class="muted" style="font-weight:400">· <?= h(fmt_date($from)) ?> – <?= h(fmt_date($to)) ?> · <?= number_format(count($data)) ?> baris</span></h2>
-    <div class="table-wrap"><table class="rep" data-freeze="<?= ['kartushift' => 7, 'kartu' => 3, 'tahunan' => 3, 'scanlog' => 1, 'harian' => 3, 'scan1x' => 3, 'luar' => 3, 'rekap' => 3][$tab] ?? 0 ?>">
+    <div class="table-wrap"><table class="rep" data-tab="<?= h($tab) ?>" data-freeze="<?= ['kartushift' => 7, 'kartu' => 3, 'tahunan' => 3, 'scanlog' => 1, 'harian' => 3, 'scan1x' => 3, 'luar' => 3, 'rekap' => 3][$tab] ?? 0 ?>">
       <?php if ($groups): ?>
         <tr class="hgroup"><?php $c = 0; foreach ($groups as $g): ?><th colspan="<?= (int)$g[1] ?>" class="<?= in_array($c, $groupStart, true) ? 'gl' : '' ?>"><b><?= h($g[0]) ?></b></th><?php $c += $g[1]; endforeach; ?></tr>
       <?php endif; ?>

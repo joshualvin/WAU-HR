@@ -813,7 +813,7 @@ elseif ($m === 'report'):
     <button class="btn">Tampilkan</button>
     <span class="grow"></span><span class="muted"><?= $noDates ? '' : h(fmt_date($from)) . ' – ' . h(fmt_date($to)) . ' · ' ?><?= number_format(count($data)) ?> baris</span>
   </form>
-  <div class="tablecard"><div class="tablescroll"><table class="rep">
+  <div class="tablecard"><div class="tablescroll"><table class="rep" data-tab="<?= h($tab) ?>">
     <thead>
       <?php if ($groups): ?><tr><?php foreach ($groups as $g): ?><th colspan="<?= (int)$g[1] ?>" style="text-align:center;border-left:1px solid var(--line)"><?= h($g[0]) ?></th><?php endforeach; ?></tr><?php endif; ?>
       <tr><?php foreach ($headers as $i => $hd): ?><th style="<?= in_array($i, $groupStart, true) ? 'border-left:1px solid var(--line)' : '' ?>"><?= h($hd) ?></th><?php endforeach; ?></tr>

@@ -45,3 +45,22 @@ function dl_ranges($dates)
     }
     return implode(', ', array_map(function ($r) use ($f) { return $r[0] === $r[1] ? $f($r[0]) : $f($r[0]) . ' s/d ' . $f($r[1]); }, $runs));
 }
+
+/** Short day ranges for tight report columns: 9-10/11, 30/10-2/11, 19/10 (consecutive days, a Sunday in between does not break a run). */
+function short_ranges($dates)
+{
+    $dates = array_values(array_unique($dates));
+    sort($dates);
+    $runs = [];
+    foreach ($dates as $d) {
+        $last = $runs ? end($runs)[1] : null;
+        $gap = $last ? (strtotime($d) - strtotime($last)) / 86400 : 0;
+        if ($last && ($gap == 1 || ($gap == 2 && date('N', strtotime($last)) == 6))) $runs[count($runs) - 1][1] = $d;
+        else $runs[] = [$d, $d];
+    }
+    $dm = function ($d) { return (int)substr($d, 8, 2) . '/' . (int)substr($d, 5, 2); };
+    return implode(', ', array_map(function ($r) use ($dm) {
+        if ($r[0] === $r[1]) return $dm($r[0]);
+        return substr($r[0], 0, 7) === substr($r[1], 0, 7) ? (int)substr($r[0], 8, 2) . '-' . $dm($r[1]) : $dm($r[0]) . '-' . $dm($r[1]);
+    }, $runs));
+}

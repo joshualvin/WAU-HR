@@ -204,8 +204,8 @@ switch ($tab) {
         break;
 
     case 'rekap':
-        $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal (jam)', 'Terlambat (x)', 'Terlambat (jam)', 'Pulang awal (x)', 'Pulang awal (jam)',
-                    'Lembur (x)', 'Lembur setelah pulang (jam)', 'Lembur datang awal (jam)', 'Total lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti (tanggal)', 'Masuk di hari libur', 'Dinas luar (hari)', 'Dinas luar (tanggal)', 'Driver (hari)', 'Kirim sendiri (trip)', 'Insentif antar', 'Bensin (km)', 'Bensin (Rp)', 'Total durasi'];
+        $headers = ['PIN', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal', 'Telat (x)', 'Telat (jam)', 'Plg awal (x)', 'Plg awal (jam)',
+                    'Lembur (x)', 'Lembur pulang', 'Lembur awal', 'Total lembur', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti tgl', 'Masuk libur', 'DL (hari)', 'DL tgl', 'Driver (hari)', 'Kirim sendiri', 'Insentif antar', 'Bensin km', 'Bensin Rp', 'Durasi'];
         require_once __DIR__ . '/payroll.php';
         ensure_payroll_tables();
         $rps = payroll_settings();
@@ -225,7 +225,7 @@ switch ($tab) {
             if ($r['status'] === 'ok') $s['ok']++;
             if ($r['status'] === 'incomplete') $s['incomplete']++;
             if ($r['status'] === 'absent') $s['absent']++;
-            if ($r['leave']) { $s['leave']++; $s['leaveDays'][] = date('d-m', strtotime($r['date'])) . ' ' . implode('/', $r['leave']); }
+            if ($r['leave']) { $s['leave']++; foreach ($r['leave'] as $lt) $s['leaveDays'][$lt][] = $r['date']; }
             if ($r['late']) { $s['late']++; $s['lateM'] += $r['late']; }
             if ($r['early']) { $s['early']++; $s['earlyM'] += $r['early']; }
             if ($r['ot']) { $s['ot']++; $s['otM'] += $r['ot']; $s['otE'] = (isset($s['otE']) ? $s['otE'] : 0) + (isset($r['ot_early']) ? (int)$r['ot_early'] : 0); }
@@ -243,12 +243,12 @@ switch ($tab) {
         foreach ($sum as $pin => $s) {
             $tr = isset($info[$pin], $tripOf[$info[$pin]['pegawai_id']]) ? $tripOf[$info[$pin]['pegawai_id']] : null;
             $fu = fuel_amount(isset($info[$pin], $fuelOf[$info[$pin]['pegawai_id']]) ? $fuelOf[$info[$pin]['pegawai_id']] : [], fuel_routes(), $rps['fuel_per_km']);   // bensin kantor-gudang (reimbursement)
-            $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
+            $data[] = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
                        $s['ot'] ?: '', $s['otM'] - (isset($s['otE']) ? $s['otE'] : 0) ? fmt_minutes($s['otM'] - (isset($s['otE']) ? $s['otE'] : 0)) : '', !empty($s['otE']) ? fmt_minutes($s['otE']) : '', $s['otM'] ? fmt_minutes($s['otM']) : '',
-                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode(', ', $s['leaveDays']) : '', $s['offWork'] ?: '',
+                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode('; ', array_map(function ($lt, $ds) { return $lt . ' ' . short_ranges($ds); }, array_keys($s['leaveDays']), $s['leaveDays'])) : '', $s['offWork'] ?: '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '',
-                       isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? dl_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',
+                       isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? short_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        $tr ? ((int)$tr['trip_driver'] ?: '') : '', $tr ? ((int)$tr['trip_alone'] ?: '') : '',
                        $tr && ($tr['trip_driver'] || $tr['trip_alone']) ? rupiah($tr['trip_driver'] * $rps['trip_driver'] + $tr['trip_alone'] * $rps['trip_alone']) : '',
                        $fu[0] ?: '', $fu[1] ? rupiah($fu[1]) : '', fmt_minutes($s['min'])];

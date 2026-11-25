@@ -434,4 +434,5 @@ table.rep td:nth-child(n+3) { white-space: normal; min-width: 30px; max-width: 1
   .tablescroll, .table-wrap { overflow: visible !important; max-height: none !important; }
   .tablecard { border: none; }
   table.rep th, table.rep td { font-size: 7.5px; padding: 2px 3px; }
+  table.rep[data-tab="rekap"] tr > :nth-child(3), table.rep[data-tab="rekap"] tr > :nth-child(4) { display: none; }   /* Jabatan, Departemen: not on paper */
 }
