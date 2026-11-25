@@ -111,4 +111,6 @@ require_once __DIR__ . '/../inc/payextra.php';
 check('bensin: 17 round trips to Margo (15 km) at Rp500/km = 510 km, Rp255.000', fuel_amount(['Gudang Margo' => 17], ['Gudang Margo' => 15, 'KG' => 10], 500), [510, 255000]);
 check('bensin: several routes, unknown route ignored', fuel_amount(['Gudang Margo' => 1, 'KG' => 2, 'X' => 9], ['Gudang Margo' => 15, 'KG' => 10], 500), [70, 35000]);
 check('short ranges', short_ranges(['2026-11-10', '2026-11-09', '2026-10-19', '2026-10-31', '2026-11-02']), '19/10, 31/10-2/11, 9-10/11');
+check('DL: Sunday between a DL Saturday and Monday counts', dl_fill_sundays(['2026-10-03', '2026-10-05', '2026-10-10']), ['2026-10-03', '2026-10-04', '2026-10-05', '2026-10-10']);
+check('DL: Sunday after a Saturday without Monday does not', dl_fill_sundays(['2026-10-09', '2026-10-10']), ['2026-10-09', '2026-10-10']);
 echo "payroll_test: $ok checks passed\n";

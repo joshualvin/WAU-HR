@@ -223,7 +223,9 @@ page_header('Input Cepat', 'quick.php');
 <?php ensure_dl_tables();
 $dlList = [];
 foreach (q('SELECT d.pegawai_id, p.pegawai_nama, d.tgl FROM web_dl d JOIN pegawai p ON p.pegawai_id = d.pegawai_id WHERE d.tgl >= ? ORDER BY p.pegawai_nama, d.tgl', [date('Y-m-d', strtotime('-62 days'))]) as $r) $dlList[$r['pegawai_id']]['name'] = $r['pegawai_nama'] ?: '';
-foreach (q('SELECT pegawai_id, tgl FROM web_dl WHERE tgl >= ? ORDER BY tgl', [date('Y-m-d', strtotime('-62 days'))]) as $r) $dlList[$r['pegawai_id']]['dates'][] = $r['tgl']; ?>
+foreach (q('SELECT pegawai_id, tgl FROM web_dl WHERE tgl >= ? ORDER BY tgl', [date('Y-m-d', strtotime('-62 days'))]) as $r) $dlList[$r['pegawai_id']]['dates'][] = $r['tgl'];
+foreach ($dlList as &$dlx) $dlx['dates'] = dl_fill_sundays($dlx['dates']);   // the Sunday between a DL Saturday and Monday counts
+unset($dlx); ?>
 <?php if ($dlList): ?>
 <div class="card" style="margin-top:12px">
   <h2>Hari dinas luar yang sudah ditandai (62 hari terakhir)</h2>

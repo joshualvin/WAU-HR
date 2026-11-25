@@ -18,8 +18,10 @@ function dl_mark($pegawaiId, $date)
 function dl_days($from, $to)
 {
     $out = [];
-    foreach (q('SELECT pegawai_id, tgl FROM web_dl WHERE tgl BETWEEN ? AND ? ORDER BY tgl', [$from, $to]) as $r) $out[(int)$r['pegawai_id']][] = $r['tgl'];
-    return $out;
+    // a day earlier and later so a Sunday on the edge of the range still sees its Saturday and Monday
+    foreach (q('SELECT pegawai_id, tgl FROM web_dl WHERE tgl BETWEEN ? - INTERVAL 1 DAY AND ? + INTERVAL 1 DAY ORDER BY tgl', [$from, $to]) as $r) $out[(int)$r['pegawai_id']][] = $r['tgl'];
+    foreach ($out as $id => $dates) $out[$id] = array_values(array_filter(dl_fill_sundays($dates), function ($d) use ($from, $to) { return $d >= $from && $d <= $to; }));
+    return array_filter($out);
 }
 
 /** Uang DL for a list of dates: Saturdays at the Saturday rate, every other day at the weekday rate. Returns [amount, weekdays, saturdays]. */
@@ -63,4 +65,18 @@ function short_ranges($dates)
         if ($r[0] === $r[1]) return $dm($r[0]);
         return substr($r[0], 0, 7) === substr($r[1], 0, 7) ? (int)substr($r[0], 8, 2) . '-' . $dm($r[1]) : $dm($r[0]) . '-' . $dm($r[1]);
     }, $runs));
+}
+
+/** DL dates with the Sunday added when the Saturday before and the Monday after are both DL (still away over the weekend). */
+function dl_fill_sundays($dates)
+{
+    $set = array_fill_keys($dates, true);
+    foreach ($dates as $d) {
+        if (date('N', strtotime($d)) != 6) continue;
+        $sun = date('Y-m-d', strtotime($d . ' +1 day'));
+        if (isset($set[date('Y-m-d', strtotime($d . ' +2 days'))])) $set[$sun] = true;
+    }
+    $out = array_keys($set);
+    sort($out);
+    return $out;
 }
