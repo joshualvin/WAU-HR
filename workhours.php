@@ -13,13 +13,14 @@ $edit = $id && isset($all[$id]) ? $all[$id] : null;
 $times = ['start', 'end', 'in_open', 'in_close', 'out_open', 'out_close'];
 $v = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    foreach (array_merge($times, ['jk_name', 'jk_kode', 'jk_tol_late', 'jk_tol_early', 'jk_durasi', 'jk_countas', 'jk_ket']) as $f) $v[$f] = post($f);
+    foreach (array_merge($times, ['jk_name', 'jk_kode', 'jk_tol_late', 'jk_tol_early', 'jk_durasi', 'jk_countas', 'jk_ket', 'min_eot', 'max_eot']) as $f) $v[$f] = post($f);
+    $v['use_eot'] = post('use_eot') === '1' ? 1 : 0;
 } elseif ($edit) {
     foreach ($times as $f) $v[$f] = min_to_hm($edit[$f]);
-    foreach (['jk_name', 'jk_kode', 'jk_tol_late', 'jk_tol_early', 'jk_durasi', 'jk_countas', 'jk_ket'] as $f) $v[$f] = $edit[$f];
+    foreach (['jk_name', 'jk_kode', 'jk_tol_late', 'jk_tol_early', 'jk_durasi', 'jk_countas', 'jk_ket', 'use_eot', 'min_eot', 'max_eot'] as $f) $v[$f] = $edit[$f];
 } else {
     $v = ['start' => '08:00', 'end' => '16:00', 'in_open' => '06:00', 'in_close' => '12:00', 'out_open' => '12:00', 'out_close' => '23:59',
-          'jk_name' => '', 'jk_kode' => '', 'jk_tol_late' => 0, 'jk_tol_early' => 0, 'jk_durasi' => 1, 'jk_countas' => 1, 'jk_ket' => ''];
+          'jk_name' => '', 'jk_kode' => '', 'jk_tol_late' => 0, 'jk_tol_early' => 0, 'jk_durasi' => 1, 'jk_countas' => 1, 'jk_ket' => '', 'use_eot' => 0, 'min_eot' => 30, 'max_eot' => 240];
 }
 
 $error = '';
@@ -37,12 +38,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         foreach ($times as $f) if (!valid_time($v[$f])) $error = 'Isi semua jam dengan format JJ:MM.';
         if ($v['jk_name'] === '') $error = 'Isi nama.';
-        foreach (['jk_tol_late', 'jk_tol_early'] as $f) if (!ctype_digit((string)$v[$f])) $error = 'Toleransi dalam menit.';
+        foreach (['jk_tol_late', 'jk_tol_early', 'min_eot', 'max_eot'] as $f) if (!ctype_digit((string)$v[$f])) $error = 'Toleransi dan lembur dalam menit.';
         if (!$error) {
             $data = work_hours_fields($v) + [
                 'jk_name' => $v['jk_name'], 'jk_kode' => mb_substr($v['jk_kode'], 0, 10), 'jk_tol_late' => (int)$v['jk_tol_late'],
                 'jk_tol_early' => (int)$v['jk_tol_early'], 'jk_durasi' => $v['jk_durasi'] == 2 ? 2 : 1,
                 'jk_countas' => (float)$v['jk_countas'], 'jk_ket' => $v['jk_ket'],
+                'use_eot' => (int)$v['use_eot'], 'min_eot' => (int)$v['min_eot'], 'max_eot' => (int)$v['max_eot'],
             ];
             if ($edit) {
                 q('UPDATE jam_kerja SET ' . implode(', ', array_map(function ($c) { return "$c = ?"; }, array_keys($data))) . ' WHERE jk_id = ?',
@@ -50,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $id = (int)q('SELECT COALESCE(MAX(jk_id), 0) + 1 FROM jam_kerja')->fetchColumn();
                 $data += ['jk_id' => $id, 'use_set' => -1, 'jk_use_ist' => 0, 'jk_ist1' => '00:00:00', 'jk_ist2' => '00:00:00',
-                          'use_eot' => 0, 'min_eot' => 0, 'max_eot' => 0, 'reduce_eot' => 0, 'jk_min_countas' => 0, 'jk_min_countas2' => 0];
+                          'reduce_eot' => 0, 'jk_min_countas' => 0, 'jk_min_countas2' => 0];
                 q('INSERT INTO jam_kerja (' . implode(', ', array_keys($data)) . ') VALUES (' . implode(', ', array_fill(0, count($data), '?')) . ')', array_values($data));
             }
             audit('workhours_save', $id . ' ' . $v['jk_name'] . ' ' . $v['start'] . '-' . $v['end']);
@@ -69,7 +71,7 @@ settings_header('Jam Kerja', 'settings.php');
 <?php if ($error): ?><div class="flash err"><?= h($error) ?></div><?php endif; ?>
 <div class="card">
   <div class="table-wrap"><table>
-    <tr><th>Kode</th><th>Nama</th><th>Masuk</th><th>Pulang</th><th>Terlambat setelah</th><th>Pulang awal sebelum</th><th>Scan masuk</th><th>Scan pulang</th><th>Durasi</th><th></th></tr>
+    <tr><th>Kode</th><th>Nama</th><th>Masuk</th><th>Pulang</th><th>Terlambat setelah</th><th>Pulang awal sebelum</th><th>Scan masuk</th><th>Scan pulang</th><th>Durasi</th><th>Lembur</th><th></th></tr>
     <?php foreach ($all as $w): ?>
       <tr>
         <td><?= h($w['jk_kode']) ?></td>
@@ -81,6 +83,7 @@ settings_header('Jam Kerja', 'settings.php');
         <td><?= min_to_hm($w['in_open']) ?>–<?= min_to_hm($w['in_close']) ?></td>
         <td><?= min_to_hm($w['out_open']) ?>–<?= min_to_hm($w['out_close']) ?></td>
         <td><?= $w['jk_durasi'] == 2 ? 'Aktual' : 'Efektif' ?></td>
+        <td><?= $w['use_eot'] ? 'Ya (' . (int)$w['min_eot'] . '–' . (int)$w['max_eot'] . ' mnt)' : 'Tidak' ?></td>
         <td><a class="btn small" href="workhours.php?id=<?= (int)$w['jk_id'] ?>#form">Ubah</a></td>
       </tr>
     <?php endforeach; ?>
@@ -105,6 +108,9 @@ settings_header('Jam Kerja', 'settings.php');
       <label>… sampai (boleh lewat tengah malam) <input type="time" name="out_close" required value="<?= h($v['out_close']) ?>"></label>
       <label>Durasi <select name="jk_durasi"><?= options(['1' => 'Efektif (jam kerja dikurangi terlambat / pulang awal)', '2' => 'Aktual (scan masuk s/d pulang)'], $v['jk_durasi']) ?></select></label>
       <label>Dihitung (hari) <input type="number" step="0.5" min="0" name="jk_countas" value="<?= h($v['jk_countas']) ?>"></label>
+      <label class="check"><input type="checkbox" name="use_eot" value="1" <?= $v['use_eot'] ? 'checked' : '' ?>> Hitung lembur setelah jam pulang</label>
+      <label>Lembur minimal (menit) <input type="number" min="0" name="min_eot" value="<?= h($v['min_eot']) ?>"></label>
+      <label>Lembur maksimal per hari (menit) <input type="number" min="0" name="max_eot" value="<?= h($v['max_eot']) ?>"></label>
       <label>Catatan <input name="jk_ket" maxlength="100" value="<?= h($v['jk_ket']) ?>"></label>
     </div>
     <div>
