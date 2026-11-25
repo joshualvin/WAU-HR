@@ -205,7 +205,7 @@ switch ($tab) {
 
     case 'rekap':
         $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal (jam)', 'Terlambat (x)', 'Terlambat (jam)', 'Pulang awal (x)', 'Pulang awal (jam)',
-                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Masuk di hari libur', 'Dinas luar (hari)', 'Dinas luar (tanggal)', 'Driver (hari)', 'Kirim sendiri (trip)', 'Insentif antar', 'Total durasi'];
+                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti (tanggal)', 'Masuk di hari libur', 'Dinas luar (hari)', 'Dinas luar (tanggal)', 'Driver (hari)', 'Kirim sendiri (trip)', 'Insentif antar', 'Total durasi'];
         require_once __DIR__ . '/payroll.php';
         ensure_payroll_tables();
         $rps = payroll_settings();
@@ -223,7 +223,7 @@ switch ($tab) {
             if ($r['status'] === 'ok') $s['ok']++;
             if ($r['status'] === 'incomplete') $s['incomplete']++;
             if ($r['status'] === 'absent') $s['absent']++;
-            if ($r['leave']) $s['leave']++;
+            if ($r['leave']) { $s['leave']++; $s['leaveDays'][] = date('d-m', strtotime($r['date'])) . ' ' . implode('/', $r['leave']); }
             if ($r['late']) { $s['late']++; $s['lateM'] += $r['late']; }
             if ($r['early']) { $s['early']++; $s['earlyM'] += $r['early']; }
             if ($r['ot']) { $s['ot']++; $s['otM'] += $r['ot']; }
@@ -242,7 +242,7 @@ switch ($tab) {
             $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
                        $s['ot'] ?: '', $s['otM'] ? fmt_minutes($s['otM']) : '',
-                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', $s['offWork'] ?: '',
+                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode(', ', $s['leaveDays']) : '', $s['offWork'] ?: '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? dl_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        $tr ? ((int)$tr['trip_driver'] ?: '') : '', $tr ? ((int)$tr['trip_alone'] ?: '') : '',
