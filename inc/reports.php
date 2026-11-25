@@ -147,9 +147,17 @@ switch ($tab) {
                 $sum[$pin][0]++;
                 for ($i = 1; $i <= 4; $i++) $sum[$pin][$i] += $x[$i];
             }
+            // and one column per day with that day's total lembur in minutes
+            $days = [];
+            for ($d = $from; $d <= $to; $d = date('Y-m-d', strtotime($d . ' +1 day'))) $days[] = $d;
+            $perDay = [];
+            foreach ($rows as $x) $perDay[$x[0]['pin']][$x[0]['date']] = $x[4];
+            foreach ($days as $d) $headers[] = (int)substr($d, 8, 2) . '/' . (int)substr($d, 5, 2);
             foreach ($sum as $pin => $v) {
                 if (!$v[0]) continue;
-                $data[] = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'dep'), $v[0], $hm($v[1]), $hm($v[2]), $hm($v[3]), $hm($v[4]), $hm($v[5]), $hm($v[4] - $v[5])];
+                $row = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'dep'), $v[0], $hm($v[1]), $hm($v[2]), $hm($v[3]), $hm($v[4]), $hm($v[5]), $hm($v[4] - $v[5])];
+                foreach ($days as $d) $row[] = isset($perDay[$pin][$d]) ? $perDay[$pin][$d] : '';
+                $data[] = $row;
             }
         } else {
             $headers = ['Tanggal', 'PIN', 'Nama', 'Departemen', 'Jam kerja', 'Masuk', 'Pulang', 'Lembur pulang', 'Datang awal', 'Hari libur', 'Total lembur', 'Telat', 'Lembur - telat'];
@@ -164,7 +172,8 @@ switch ($tab) {
             ['Datang awal', 'Menit sebelum jam masuk yang dibayar sebagai lembur (Heni dan Yanuar).'],
             ['Hari libur', 'Seluruh jam kerja pada hari libur / di luar jadwal.'],
             ['Total lembur', 'Lembur pulang + datang awal + hari libur.'],
-            ['Lembur - telat', 'Total lembur dikurangi menit terlambat pada hari itu (rekap: dalam periode). Waktu dalam jam:menit.']]]];
+            ['Lembur - telat', 'Total lembur dikurangi menit terlambat pada hari itu (rekap: dalam periode). Waktu dalam jam:menit.'],
+            ['Kolom tanggal (rekap)', 'Total lembur per hari dalam menit (lembur pulang + datang awal + hari libur).']]]];
         break;
 
     case 'terlambat':
