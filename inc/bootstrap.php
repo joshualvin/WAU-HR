@@ -654,6 +654,7 @@ function daily_attendance($from, $to, $pegawaiId = null)
 
     // warehouse staff are late only from the moment the warehouse was opened (config 'gudang_late_from_open' => false turns this off)
     require_once __DIR__ . '/gudang.php';
+    $earlyOt = array_fill_keys(array_map('strval', isset($CONFIG['early_ot_pins']) ? (array)$CONFIG['early_ot_pins'] : ['9001', '9006']), true);   // come in before the start: that time is lembur
     list($gOpen, $gStaff) = !isset($CONFIG['gudang_late_from_open']) || $CONFIG['gudang_late_from_open'] ? gudang_open_minutes($from, $to) : [[], []];
 
     $rows = [];
@@ -700,6 +701,7 @@ function daily_attendance($from, $to, $pegawaiId = null)
             if ($jk && (int)$jk['use_eot'] && $outM !== null && $outM - $jk['end'] >= (int)$jk['min_eot']) {
                 $ot = min($outM - $jk['end'], (int)$jk['max_eot']);
             }
+            if ($jk && $inM !== null && isset($earlyOt[(string)$e['pegawai_pin']])) $ot += early_ot_minutes($inM, $jk['start'], $jk['min_eot'], $jk['max_eot']);
 
             $lv = isset($leave[$e['pegawai_id']][$d]) ? $leave[$e['pegawai_id']][$d] : [];
             $missing = null;

@@ -83,3 +83,14 @@ function gudang_open_minutes($from, $to)
                 WHERE d.pembagian2_nama LIKE '%gudang%' OR k.pembagian3_nama LIKE '%gudang%'")->fetchAll(PDO::FETCH_COLUMN);
     return [$open, array_fill_keys(array_map('intval', $staff), true)];
 }
+
+/**
+ * Overtime before the shift for staff who must come in early (config 'early_ot_pins', e.g. Heni and Yanuar collecting documents
+ * at the office before going to the warehouse): minutes between the check-in and the scheduled start, counted like overtime after
+ * work (at least $minEot minutes, at most $maxEot). 0 for a check-in at or after the start.
+ */
+function early_ot_minutes($inM, $startM, $minEot, $maxEot)
+{
+    $m = $startM - $inM;
+    return $m >= max(1, (int)$minEot) ? min($m, (int)$maxEot ?: $m) : 0;
+}

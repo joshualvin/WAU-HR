@@ -28,6 +28,7 @@ return [
     'career_url'   => 'https://career.wautama.com',
     'career_token' => '',
     'gudang_expect_open' => '08:00',   // the home card shows "Belum buka" when nobody has scanned by this time
+    'early_ot_pins' => ['9001', '9006'],   // arriving before the scheduled start counts as lembur for these PINs (Heni, Yanuar: documents from the office)
     'gudang_openers' => ['9001', '9008', '9005'],   // who opens the warehouse: the head first (Heni), then the backups (Andhy, Susi); the opener's first Margo scan = opening time
     'gudang_open_grace' => 5,   // minutes after the warehouse opened that still count as on time (staff queue at the one machine)
     'gudang_late_from_open' => true,   // warehouse staff are late only from the time the warehouse was opened (when that is after their start)   // report "Jam Gudang": PIN whose first / last scan on the Margo machines is the warehouse open / close time
