@@ -107,4 +107,7 @@ $bf = bpjs(['gaji_pokok' => 5290000, 'tunjangan' => 55000, 'bpjs_kes' => 1, 'bpj
 check('fixed BPJS bases: JKK, JHT employee, Kes company', [$bf['jkk'], $bf['jht_emp'], $bf['kes_co'], $bf['kes_emp']], [11916, 99300, 201315, 50329]);
 check('gudang net lembur: minutes', [gudang_net_minutes(230, 98, 0, 23, 10), gudang_net_minutes(239, 0, 226, 24, 10), gudang_net_minutes(100, 0, 100, 10, 10)], [132, 239 - max(0, 226 - 240), 100]);
 check('gudang net lembur: late over tolerance goes negative', gudang_net_minutes(60, 0, 400, 20, 10), 60 - 200);
+require_once __DIR__ . '/../inc/payextra.php';
+check('bensin: 17 round trips to Margo (15 km) at Rp500/km = 510 km, Rp255.000', fuel_amount(['Gudang Margo' => 17], ['Gudang Margo' => 15, 'KG' => 10], 500), [510, 255000]);
+check('bensin: several routes, unknown route ignored', fuel_amount(['Gudang Margo' => 1, 'KG' => 2, 'X' => 9], ['Gudang Margo' => 15, 'KG' => 10], 500), [70, 35000]);
 echo "payroll_test: $ok checks passed\n";

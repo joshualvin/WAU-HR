@@ -31,6 +31,11 @@ function ensure_payextra_tables()
     if (!q("SHOW COLUMNS FROM web_bonus LIKE 'ot_manual'")->fetch()) db()->exec('ALTER TABLE web_bonus ADD ot_manual BIGINT NULL');
     // gudang delivery incentive: trips driven as driver, and trips done alone (without the usual helpers)
     if (!q("SHOW COLUMNS FROM web_bonus LIKE 'trip_driver'")->fetch()) db()->exec('ALTER TABLE web_bonus ADD trip_driver INT NOT NULL DEFAULT 0, ADD trip_alone INT NOT NULL DEFAULT 0');
+    // office <-> warehouse trips per period and destination, for the fuel (bensin) reimbursement
+    db()->exec("CREATE TABLE IF NOT EXISTS web_fuel (
+        period_to DATE NOT NULL, pegawai_id INT NOT NULL, dest VARCHAR(20) NOT NULL, trips INT NOT NULL DEFAULT 0,
+        PRIMARY KEY (period_to, pegawai_id, dest)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8");
     // salesman code in WAU ERP (mastersalesman) per employee, for taking actual sales from the ERP
     db()->exec("CREATE TABLE IF NOT EXISTS web_sales_code (
         pegawai_id INT NOT NULL PRIMARY KEY,
@@ -414,4 +419,21 @@ function bpjs_lines($d)
     $g = function ($a, $k) { return isset($a[$k]) ? (int)$a[$k] : 0; };
     return ['kes' => [$g($c, 'BPJS Kesehatan (4%)'), $g($e, 'BPJS Kesehatan (1%)')], 'jht' => [$g($c, 'BPJS JHT (3,7%)'), $g($e, 'BPJS JHT (2%)')],
             'jp' => [$g($c, 'BPJS JP (2%)'), $g($e, 'BPJS JP (1%)')], 'jkk' => [$g($c, 'BPJS JKK'), 0], 'jkm' => [$g($c, 'BPJS JKM'), 0]];
+}
+
+// ---------- bensin kantor <-> gudang ----------
+
+/** Routes from the office: name => km one way (config 'fuel_routes'). */
+function fuel_routes()
+{
+    global $CONFIG;
+    return !empty($CONFIG['fuel_routes']) ? $CONFIG['fuel_routes'] : ['Gudang Margo' => 15, 'Gudang Krikilan' => 26, 'KG' => 10];
+}
+
+/** Round trips per route -> [km driven, rupiah]: there and back, km x rate. */
+function fuel_amount($trips, $routes, $perKm)
+{
+    $km = 0;
+    foreach ($trips as $dest => $n) if (isset($routes[$dest])) $km += 2 * (int)$n * $routes[$dest];
+    return [$km, (int)round($km * $perKm)];
 }

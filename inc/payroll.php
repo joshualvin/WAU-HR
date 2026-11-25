@@ -81,6 +81,7 @@ function payroll_defaults()
         'npwp_surcharge' => 20,                                           // % added to PPh 21 for an employee without NPWP; 0 = off
         'ot_net_gudang' => 1,                                             // gudang: lembur = overtime minutes - early leave - lateness over the tolerance, flat 1.5x (their sheet)
         'late_tolerance' => 10,                                           // minutes of lateness per day present that are not netted against lembur
+        'fuel_per_km' => 500,                                             // bensin kantor-gudang, Rp per km
         'umr' => 0,                                                       // regional minimum wage (UMP/UMK), Rp per month; 0 = no check
         'daily_month_days' => 25,                                         // harian lepas: monthly wage = daily wage x 25 (6-day week) or 21 (5-day), PP 35/2021 art. 32
     ];

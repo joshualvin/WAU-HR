@@ -59,6 +59,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit('ytd_save', "$yr: $n karyawan");
         flash("Saldo awal PPh 21 $yr untuk $n karyawan disimpan.");
         redirect('payroll.php?p=ytd&year=' . $yr);
+    } elseif ($action === 'gudang_save') {   // trips and incentives of the warehouse team for the period, like the gudang recap sheet
+        $routes = fuel_routes();
+        $rate = payroll_settings()['fuel_per_km'];
+        $n = 0;
+        foreach (isset($_POST['g']) ? (array)$_POST['g'] : [] as $id => $v) {
+            $num = function ($k) use ($v) { return isset($v[$k]) ? (int)preg_replace('/\D/', '', $v[$k]) : 0; };
+            q('INSERT INTO web_bonus (period_to, pegawai_id, trip_driver, trip_alone, updated_by) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE trip_driver = VALUES(trip_driver), trip_alone = VALUES(trip_alone), updated_by = VALUES(updated_by)',
+                [$to, (int)$id, $num('driver'), $num('alone'), actor()]);
+            $trips = [];
+            foreach (array_keys($routes) as $i => $dest) {
+                $t = $num('r' . $i);
+                $trips[$dest] = $t;
+                if ($t) q('REPLACE INTO web_fuel (period_to, pegawai_id, dest, trips) VALUES (?, ?, ?, ?)', [$to, (int)$id, $dest, $t]);
+                else q('DELETE FROM web_fuel WHERE period_to = ? AND pegawai_id = ? AND dest = ?', [$to, (int)$id, $dest]);
+            }
+            list($km, $rp) = fuel_amount($trips, $routes, $rate);
+            $tag = 'Bensin kantor-gudang periode ' . $to;
+            $claim = q("SELECT id FROM web_reimburse WHERE pegawai_id = ? AND keterangan LIKE ? AND (paid_period_to IS NULL OR paid_period_to = ?)", [(int)$id, $tag . '%', $to])->fetchColumn();
+            if ($rp > 0) {
+                $note = $tag . ': ' . $km . ' km x ' . rupiah($rate);
+                if ($claim) q('UPDATE web_reimburse SET jumlah = ?, keterangan = ? WHERE id = ?', [$rp, $note, $claim]);
+                else q('INSERT INTO web_reimburse (pegawai_id, tgl, kategori, jumlah, keterangan, file, status, created_at, decided_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [(int)$id, $to, 'Bensin', $rp, $note, '', CLAIM_APPROVED, date('Y-m-d H:i:s'), actor()]);
+            } elseif ($claim) q('DELETE FROM web_reimburse WHERE id = ?', [$claim]);
+            $n++;
+        }
+        audit('gudang_save', "$to: $n karyawan");
+        flash("Rekap gudang $n karyawan disimpan. Bensin masuk ke Reimbursement (disetujui) dan dibayar bersama gaji periode ini.");
+        redirect('payroll.php?' . http_build_query(['p' => 'gudang', 'from' => $from, 'to' => $to]));
     } elseif ($action === 'rb_add') {   // HR enters an approved claim for an employee (e.g. bensin for errands)
         $amt = (int)preg_replace('/\D/', '', post('jumlah'));
         $emp = q('SELECT pegawai_id, pegawai_nama FROM pegawai WHERE pegawai_id = ?', [(int)post('pegawai_id')])->fetch();
@@ -472,6 +501,38 @@ elseif ($p === 'ytd'):
     <?php endforeach; ?></tbody></table></div></div>
   <div class="formfoot"><button class="btn primary">Simpan</button></div></form>
 <?php
+// ======================================================================= Rekap gudang (driver, kirim sendiri, bensin)
+elseif ($p === 'gudang'):
+    $ps = payroll_settings();
+    $routes = fuel_routes();
+    $pays = pay_data();
+    $b = bonuses_for_period($to);
+    $fuel = [];
+    foreach (q('SELECT pegawai_id, dest, trips FROM web_fuel WHERE period_to = ?', [$to]) as $r) $fuel[$r['pegawai_id']][$r['dest']] = (int)$r['trips'];
+    $deps = lookup('pembagian2');
+    $emps = q('SELECT pegawai_id, pegawai_pin, pegawai_nama, pembagian2_id FROM pegawai WHERE pegawai_status = 1 ORDER BY pegawai_nama')->fetchAll();
+    usort($emps, function ($x, $y) use ($deps) { $gx = stripos(isset($deps[$x['pembagian2_id']]) ? $deps[$x['pembagian2_id']] : '', 'gudang') === false; $gy = stripos(isset($deps[$y['pembagian2_id']]) ? $deps[$y['pembagian2_id']] : '', 'gudang') === false; return [$gx, $x['pegawai_nama']] <=> [$gy, $y['pegawai_nama']]; });
+    $tot = ['in' => 0, 'fuel' => 0];
+    hris_header('Rekap gudang', 'payroll', 'payroll.php?p=gudang', 'Penggajian'); ?>
+  <?= $periodPicker('gudang') ?>
+  <form method="post"><?= $csrf ?><input type="hidden" name="action" value="gudang_save"><input type="hidden" name="from" value="<?= h($from) ?>"><input type="hidden" name="to" value="<?= h($to) ?>">
+  <div class="tablecard"><div class="tablescroll"><table>
+    <thead><tr><th>Nama</th><th>Departemen</th><th title="Hari menyetir (Rp <?= number_format($ps['trip_driver'], 0, ',', '.') ?> per hari)">Driver (hari)</th><th title="Trip kirim sendiri, hanya 1 kernet (Rp <?= number_format($ps['trip_alone'], 0, ',', '.') ?> per trip)">Sendiri (trip)</th><th class="num">Insentif</th>
+      <?php foreach ($routes as $dest => $km): ?><th title="Pulang-pergi, <?= (int)$km ?> km sekali jalan">Kantor–<?= h($dest) ?> (PP)</th><?php endforeach; ?><th class="num">Km</th><th class="num">Bensin</th></tr></thead><tbody>
+    <?php foreach ($emps as $e): $id = (int)$e['pegawai_id']; $v = isset($b[$id]) ? $b[$id] : ['trip_driver' => 0, 'trip_alone' => 0];
+        $inc = $v['trip_driver'] * $ps['trip_driver'] + $v['trip_alone'] * $ps['trip_alone'];
+        list($km, $rp) = fuel_amount(isset($fuel[$id]) ? $fuel[$id] : [], $routes, $ps['fuel_per_km']);
+        $tot['in'] += $inc; $tot['fuel'] += $rp;
+        $cell = function ($name, $val) use ($id) { return '<td><input type="text" inputmode="numeric" name="g[' . $id . '][' . $name . ']" value="' . ($val ? (int)$val : '') . '" style="width:56px"></td>'; }; ?>
+      <tr><td><b><?= h($e['pegawai_nama']) ?></b> <span class="muted"><?= h($e['pegawai_pin']) ?></span></td><td class="muted"><?= h(isset($deps[$e['pembagian2_id']]) ? $deps[$e['pembagian2_id']] : '') ?></td>
+        <?= $cell('driver', $v['trip_driver']) . $cell('alone', $v['trip_alone']) ?><td class="num"><?= $inc ? rupiah($inc) : '' ?></td>
+        <?php foreach (array_keys($routes) as $i => $dest) echo $cell('r' . $i, isset($fuel[$id][$dest]) ? $fuel[$id][$dest] : 0); ?>
+        <td class="num"><?= $km ?: '' ?></td><td class="num"><?= $rp ? rupiah($rp) : '' ?></td></tr>
+    <?php endforeach; ?></tbody>
+    <tfoot><tr><th colspan="4">Total</th><th class="num"><?= rupiah($tot['in']) ?></th><th colspan="<?= count($routes) + 1 ?>"></th><th class="num"><?= rupiah($tot['fuel']) ?></th></tr></tfoot></table></div></div>
+  <div class="formfoot"><span class="muted" style="margin-right:auto">Driver Rp<?= number_format($ps['trip_driver'], 0, ',', '.') ?>/hari, kirim sendiri Rp<?= number_format($ps['trip_alone'], 0, ',', '.') ?>/trip (masuk gaji). Bensin: jumlah pulang-pergi × km × 2 × Rp<?= number_format($ps['fuel_per_km'], 0, ',', '.') ?>/km, disimpan sebagai Reimbursement Bensin (tidak kena pajak). Jarak: <?= h(implode(', ', array_map(function ($d, $k) { return "$d $k km"; }, array_keys($routes), $routes))) ?>.</span>
+    <button class="btn primary">Simpan</button></div></form>
+<?php
 // ======================================================================= Bonus penjualan
 elseif ($p === 'bonus'):
     $tiers = bonus_tiers();
@@ -814,6 +875,7 @@ else:
                                 'npwp_surcharge' => 'Tambahan PPh 21 untuk karyawan tanpa NPWP (%; 0 = tidak ada)',
                                 'ot_net_gudang' => 'Gudang: lembur dikurangi pulang cepat dan terlambat, tarif 1,5x (1 = ya, 0 = tidak)',
                                 'late_tolerance' => 'Toleransi terlambat per hari hadir untuk perhitungan lembur gudang (menit)',
+                                'fuel_per_km' => 'Penggantian bensin kantor-gudang (Rp per km)',
                                 'ot_requires_approval' => 'Lembur harus diajukan (1 = hanya bayar lembur yang disetujui, 0 = bayar dari scan)',
                                 'umr' => 'UMR/UMK daerah (Rp / bulan, 0 = tidak dicek): gaji pokok + tunjangan tetap di bawahnya diberi tanda di Data gaji karyawan',
                                 'daily_month_days' => 'Harian lepas: upah sebulan = upah harian × (25 untuk 6 hari kerja, 21 untuk 5 hari)'],
