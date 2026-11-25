@@ -425,9 +425,9 @@ body.railmini .rail .cid { display: none; }
 @page { size: landscape; }   /* reports have many columns: print across the page */
 
 /* report tables (Laporan): narrow columns with wrapping headers so wide reports fit the screen and a landscape page */
-table.rep th { white-space: normal; font-size: 11px; line-height: 1.2; vertical-align: bottom; padding: 6px 5px; min-width: 34px; }
-table.rep td { font-size: 12px; padding: 4px 5px; }
-table.rep td:nth-child(n+3) { white-space: normal; min-width: 30px; max-width: 170px; }
+table.rep th { white-space: normal; font-size: 10.5px; line-height: 1.15; vertical-align: bottom; padding: 5px 4px; min-width: 30px; }
+table.rep td { font-size: 11px; padding: 3px 4px; }
+table.rep td:nth-child(n+2) { white-space: normal; min-width: 28px; max-width: 150px; }
 @media print {
   .rail, .top, .band .actions, .band a.btn, .band button, form.toolbar, .pager, .no-print { display: none !important; }
   .shell, main, .content { display: block !important; margin: 0 !important; padding: 0 !important; }

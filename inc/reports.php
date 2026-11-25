@@ -205,7 +205,7 @@ switch ($tab) {
 
     case 'rekap':
         $headers = ['PIN', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal', 'Telat (x)', 'Telat (jam)', 'Plg awal (x)', 'Plg awal (jam)',
-                    'Lembur (x)', 'Lembur pulang', 'Lembur awal', 'Total lembur', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti tgl', 'Masuk libur', 'DL (hari)', 'DL tgl', 'Driver (hari)', 'Kirim sendiri', 'Insentif antar', 'Bensin km', 'Bensin Rp', 'Durasi'];
+                    'Lembur (x)', 'Lembur pulang', 'Lembur awal', 'Total lembur', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti tgl', 'Masuk libur', 'DL (hari)', 'DL tgl', 'Driver (hari)', 'Kirim sendiri', 'Insentif antar (Rp)', 'Bensin km', 'Bensin (Rp)', 'Durasi'];
         require_once __DIR__ . '/payroll.php';
         ensure_payroll_tables();
         $rps = payroll_settings();
@@ -246,12 +246,12 @@ switch ($tab) {
             $data[] = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
                        $s['ot'] ?: '', $s['otM'] - (isset($s['otE']) ? $s['otE'] : 0) ? fmt_minutes($s['otM'] - (isset($s['otE']) ? $s['otE'] : 0)) : '', !empty($s['otE']) ? fmt_minutes($s['otE']) : '', $s['otM'] ? fmt_minutes($s['otM']) : '',
-                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode('; ', array_map(function ($lt, $ds) { return $lt . ' ' . short_ranges($ds); }, array_keys($s['leaveDays']), $s['leaveDays'])) : '', $s['offWork'] ?: '',
+                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode('; ', array_map(function ($lt, $ds) { return preg_replace('/\\s*\\(.*\\)$/', '', $lt) . ' ' . short_ranges($ds); }, array_keys($s['leaveDays']), $s['leaveDays'])) : '', $s['offWork'] ?: '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? short_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        $tr ? ((int)$tr['trip_driver'] ?: '') : '', $tr ? ((int)$tr['trip_alone'] ?: '') : '',
-                       $tr && ($tr['trip_driver'] || $tr['trip_alone']) ? rupiah($tr['trip_driver'] * $rps['trip_driver'] + $tr['trip_alone'] * $rps['trip_alone']) : '',
-                       $fu[0] ?: '', $fu[1] ? rupiah($fu[1]) : '', fmt_minutes($s['min'])];
+                       $tr && ($tr['trip_driver'] || $tr['trip_alone']) ? number_format($tr['trip_driver'] * $rps['trip_driver'] + $tr['trip_alone'] * $rps['trip_alone'], 0, ',', '.') : '',
+                       $fu[0] ?: '', $fu[1] ? number_format($fu[1], 0, ',', '.') : '', fmt_minutes($s['min'])];
         }
         break;
 
