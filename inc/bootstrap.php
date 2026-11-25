@@ -652,6 +652,10 @@ function daily_attendance($from, $to, $pegawaiId = null)
     $holidays = q('SELECT libur_tgl, libur_keterangan FROM libur WHERE libur_tgl BETWEEN ? AND ?', [$from, $to])->fetchAll(PDO::FETCH_KEY_PAIR);
     $midday = hm_to_min(isset($CONFIG['midday']) ? $CONFIG['midday'] : '12:00');
 
+    // warehouse staff are late only from the moment the warehouse was opened (config 'gudang_late_from_open' => false turns this off)
+    require_once __DIR__ . '/gudang.php';
+    list($gOpen, $gStaff) = !isset($CONFIG['gudang_late_from_open']) || $CONFIG['gudang_late_from_open'] ? gudang_open_minutes($from, $to) : [[], []];
+
     $rows = [];
     for ($d = $from; $d <= $to; $d = date('Y-m-d', strtotime($d . ' +1 day'))) {
         $day0 = strtotime($d);
@@ -683,7 +687,7 @@ function daily_attendance($from, $to, $pegawaiId = null)
 
             $late = $early = 0;
             $minutes = null;
-            if ($jk && $inM !== null && $inM - $jk['start'] > (int)$jk['jk_tol_late']) $late = $inM - $jk['start'];
+            if ($jk && $inM !== null) $late = late_minutes($inM, $jk['start'], $jk['jk_tol_late'], isset($gStaff[(int)$e['pegawai_id']], $gOpen[$d]) ? $gOpen[$d] : null);
             if ($jk && $outM !== null && $jk['end'] - $outM > (int)$jk['jk_tol_early']) $early = $jk['end'] - $outM;
             if ($inM !== null && $outM !== null) {
                 if ($jk && (int)$jk['jk_durasi'] !== 2) $minutes = ($early ? $outM : $jk['end']) - ($late ? $inM : $jk['start']);

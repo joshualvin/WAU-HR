@@ -38,3 +38,23 @@ function gudang_state($times, $now, $expect = '08:00')
     $closed = $mins($last) - $mins($open) >= 120;
     return ['state' => $closed ? 'closed' : 'open', 'open' => $open, 'close' => $closed ? $last : null];
 }
+
+/**
+ * Late minutes of a check-in. Warehouse staff cannot start before the warehouse is opened, so when it opened ($openM) after the
+ * scheduled start their lateness is counted from the opening time instead. Minutes from midnight; null $openM = normal rule.
+ */
+function late_minutes($inM, $startM, $tolerance, $openM = null)
+{
+    $from = $openM !== null && $openM > $startM ? $openM : $startM;
+    return $inM - $from > (int)$tolerance ? $inM - $from : 0;
+}
+
+/** [Y-m-d => opening minute] for the days in the range, and the ids of warehouse staff (department or office named gudang, not the opener). */
+function gudang_open_minutes($from, $to)
+{
+    $open = [];
+    foreach (gudang_scans($from, $to)['days'] as $d => $v) { $t = min($v['t']); $open[$d] = (int)substr($t, 0, 2) * 60 + (int)substr($t, 3, 2); }
+    $staff = q("SELECT p.pegawai_id FROM pegawai p LEFT JOIN pembagian2 d ON d.pembagian2_id = p.pembagian2_id LEFT JOIN pembagian3 k ON k.pembagian3_id = p.pembagian3_id
+                WHERE (d.pembagian2_nama LIKE '%gudang%' OR k.pembagian3_nama LIKE '%gudang%') AND p.pegawai_pin <> ?", [gudang_pin()])->fetchAll(PDO::FETCH_COLUMN);
+    return [$open, array_fill_keys(array_map('intval', $staff), true)];
+}

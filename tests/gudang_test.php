@@ -9,4 +9,9 @@ check('one scan = open', gudang_state(['07:02'], '10:00'), ['state' => 'open', '
 check('scans out of order, a second scan soon after is still open', gudang_state(['07:10', '07:02'], '08:00'), ['state' => 'open', 'open' => '07:02', 'close' => null]);
 check('a scan 2h or more later is the closing time', gudang_state(['07:02', '12:00', '17:05'], '18:00'), ['state' => 'closed', 'open' => '07:02', 'close' => '17:05']);
 check('exactly 2 hours counts', gudang_state(['08:00', '10:00'], '10:30')['state'], 'closed');
+check('normal: late after the tolerance', late_minutes(8 * 60 + 12, 8 * 60, 5), 12);
+check('normal: within the tolerance', late_minutes(8 * 60 + 4, 8 * 60, 5), 0);
+check('warehouse opened 08:20, arrived 08:25: 5 minutes late', late_minutes(8 * 60 + 25, 8 * 60, 0, 8 * 60 + 20), 5);
+check('warehouse opened 08:20, arrived 08:15: not late', late_minutes(8 * 60 + 15, 8 * 60, 0, 8 * 60 + 20), 0);
+check('warehouse opened early: normal start counts', late_minutes(8 * 60 + 10, 8 * 60, 0, 7 * 60 + 40), 10);
 echo "gudang_test: $ok checks passed\n";

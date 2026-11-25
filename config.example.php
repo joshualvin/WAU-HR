@@ -28,6 +28,7 @@ return [
     'career_url'   => 'https://career.wautama.com',
     'career_token' => '',
     'gudang_expect_open' => '08:00',   // the home card shows "Belum buka" when nobody has scanned by this time
-    'gudang_opener_pin' => '9001',   // report "Jam Gudang": PIN whose first / last scan on the Margo machines is the warehouse open / close time
+    'gudang_opener_pin' => '9001',
+    'gudang_late_from_open' => true,   // warehouse staff are late only from the time the warehouse was opened (when that is after their start)   // report "Jam Gudang": PIN whose first / last scan on the Margo machines is the warehouse open / close time
     'anthropic_api_key' => '',   // HR assistant (assistant.php): API key from console.anthropic.com; also run "composer install"
 ];
