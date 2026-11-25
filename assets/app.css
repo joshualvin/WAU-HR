@@ -165,3 +165,5 @@ main table select { max-width: 170px; }
 .setrow small { display: block; color: #666; }
 .setrow .chev { display: none; }
 .card h2 .side { float: right; font-size: 12px; font-weight: 400; }
+
+@page { size: landscape; }   /* reports have many columns: print across the page */

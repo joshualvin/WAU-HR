@@ -66,7 +66,7 @@ page_header('Reports', 'report.php');
     <?php endif; ?>
   </div>
   <?php if ($side): ?>
-  <div style="flex:1 1 260px">
+  <div style="flex:1 1 100%">
     <?php foreach ($side as $s): ?>
       <div class="card">
         <h2><?= h($s[0]) ?></h2>

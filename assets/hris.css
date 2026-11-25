@@ -421,3 +421,5 @@ body.railmini .rail .cid { display: none; }
 .widget h2 .side { white-space: nowrap; }
 .mcal-lg { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
 .mcal-lg i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+
+@page { size: landscape; }   /* reports have many columns: print across the page */

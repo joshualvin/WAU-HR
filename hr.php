@@ -830,6 +830,12 @@ elseif ($m === 'report'):
       <span><?= $page ?> / <?= (int)ceil(count($data) / $perPage) ?></span>
       <?php if ($page * $perPage < count($data)): ?><a class="btn small" href="hr.php?<?= h(http_build_query($q + ['page' => $page + 1])) ?>">›</a><?php endif; ?></div><?php endif; ?>
   </div>
+  <?php if (!empty($side)): foreach ($side as $sd): ?>   <!-- notes and summaries under the table -->
+  <div class="tablecard" style="margin-top:12px"><div class="tablescroll"><table>
+    <thead><tr><th colspan="<?= count($sd[1]) ?>"><?= h($sd[0]) ?></th></tr><tr><?php foreach ($sd[1] as $hd): ?><th><?= h($hd) ?></th><?php endforeach; ?></tr></thead><tbody>
+    <?php foreach ($sd[2] as $row): ?><tr><?php foreach ($row as $c): ?><td style="white-space:normal"><?= h($c) ?></td><?php endforeach; ?></tr><?php endforeach; ?>
+  </tbody></table></div></div>
+  <?php endforeach; endif; ?>
 <?php
 else:
     redirect('hr.php');
