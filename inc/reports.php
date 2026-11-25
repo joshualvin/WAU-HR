@@ -204,8 +204,8 @@ switch ($tab) {
         break;
 
     case 'rekap':
-        $headers = ['PIN', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal', 'Telat (x)', 'Telat (jam)', 'Plg awal (x)', 'Plg awal (jam)',
-                    'Lembur (x)', 'Lembur pulang', 'Lembur awal', 'Total lembur', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti tgl', 'Masuk libur', 'DL (hari)', 'DL tgl', 'Driver (hari)', 'Kirim sendiri', 'Insentif antar (Rp)', 'Bensin km', 'Bensin (Rp)', 'Durasi'];
+        $headers = ['PIN', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal (mnt)', 'Telat (x)', 'Telat (mnt)', 'Plg awal (x)', 'Plg awal (mnt)',
+                    'Lembur (x)', 'Total lembur (mnt)', 'Lembur - telat (mnt)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti tgl', 'Masuk libur', 'DL (hari)', 'DL tgl', 'Driver (hari)', 'Kirim sendiri', 'Insentif antar (Rp)', 'Bensin km', 'Bensin (Rp)', 'Durasi'];
         require_once __DIR__ . '/payroll.php';
         ensure_payroll_tables();
         $rps = payroll_settings();
@@ -236,16 +236,17 @@ switch ($tab) {
         $names = [];
         foreach (array_keys($earlyPaid) as $ep) if (isset($info[$ep])) $names[] = $info[$ep]['pegawai_nama'];
         $side = [['Keterangan', ['Hal', 'Penjelasan'], [
-            ['Datang awal', 'Menit sebelum jam masuk jadwal. Untuk ' . implode(' dan ', $names ?: ['(tidak ada)']) . ' datang awal dibayar sebagai lembur: Lembur setelah pulang + Lembur datang awal = Total lembur (yang dibayar), karena harus ke kantor dulu sebelum ke gudang; untuk karyawan lain hanya dicatat.'],
+            ['Datang awal', 'Menit sebelum jam masuk jadwal. Untuk ' . implode(' dan ', $names ?: ['(tidak ada)']) . ' datang awal sudah termasuk di Total lembur (lembur setelah pulang + datang awal), karena harus ke kantor dulu sebelum ke gudang; untuk karyawan lain hanya dicatat.'],
+            ['Lembur - telat', 'Total lembur dikurangi menit terlambat dalam periode (bisa minus). Semua waktu dalam menit, kecuali Durasi.'],
             ['Driver / kirim sendiri', 'Dari Penggajian › Rekap gudang untuk periode gaji yang berakhir pada tanggal "s/d": driver Rp' . number_format($rps['trip_driver'], 0, ',', '.') . '/hari, kirim sendiri (1 kernet) Rp' . number_format($rps['trip_alone'], 0, ',', '.') . '/trip.'],
             ['Bensin', 'Perjalanan kantor–gudang pulang-pergi dari Rekap gudang × km × 2 × Rp' . number_format($rps['fuel_per_km'], 0, ',', '.') . '/km; dibayar sebagai reimbursement (tidak kena pajak).'],
             ['Terlambat gudang', 'Karyawan gudang dihitung terlambat dari jam gudang dibuka (scan pertama pembuka di mesin Margo) bila lebih lambat dari jam masuk, dengan toleransi antre.']]]];
         foreach ($sum as $pin => $s) {
             $tr = isset($info[$pin], $tripOf[$info[$pin]['pegawai_id']]) ? $tripOf[$info[$pin]['pegawai_id']] : null;
             $fu = fuel_amount(isset($info[$pin], $fuelOf[$info[$pin]['pegawai_id']]) ? $fuelOf[$info[$pin]['pegawai_id']] : [], fuel_routes(), $rps['fuel_per_km']);   // bensin kantor-gudang (reimbursement)
-            $data[] = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
-                       $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
-                       $s['ot'] ?: '', $s['otM'] - (isset($s['otE']) ? $s['otE'] : 0) ? fmt_minutes($s['otM'] - (isset($s['otE']) ? $s['otE'] : 0)) : '', !empty($s['otE']) ? fmt_minutes($s['otE']) : '', $s['otM'] ? fmt_minutes($s['otM']) : '',
+            $data[] = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ?: '',
+                       $s['late'] ?: '', $s['lateM'] ?: '', $s['early'] ?: '', $s['earlyM'] ?: '',
+                       $s['ot'] ?: '', $s['otM'] ?: '', $s['otM'] || $s['lateM'] ? $s['otM'] - $s['lateM'] : '',
                        $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode('; ', array_map(function ($lt, $ds) { return preg_replace('/\\s*\\([^)]*\\)/', '', $lt) . ' ' . short_ranges($ds); }, array_keys($s['leaveDays']), $s['leaveDays'])) : '', $s['offWork'] ?: '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? short_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',
