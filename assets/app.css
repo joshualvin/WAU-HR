@@ -166,7 +166,7 @@ main table select { max-width: 170px; }
 .setrow .chev { display: none; }
 .card h2 .side { float: right; font-size: 12px; font-weight: 400; }
 
-@page { size: landscape; }   /* reports have many columns: print across the page */
+@page { size: A4 landscape; margin: 8mm; }   /* reports have many columns: print across the page */
 
 /* report tables (Laporan): narrow columns with wrapping headers so wide reports fit the screen and a landscape page */
 table.rep th { white-space: normal; font-size: 10.5px; line-height: 1.15; vertical-align: bottom; padding: 5px 4px; min-width: 30px; }
@@ -178,5 +178,8 @@ table.rep td:nth-child(n+2) { white-space: normal; min-width: 28px; max-width: 1
   .tablescroll, .table-wrap { overflow: visible !important; max-height: none !important; }
   .tablecard { border: none; }
   table.rep th, table.rep td { font-size: 7.5px; padding: 2px 3px; }
+  html, body, .shell, main, .content, .frame { height: auto !important; min-height: 0 !important; }   /* no empty second page */
+  body { padding: 0 !important; }
+  .statusbar, .titlebar, .toolbar, .side { display: none !important; }
   table.rep[data-tab="rekap"] tr > :nth-child(3), table.rep[data-tab="rekap"] tr > :nth-child(4) { display: none; }   /* Jabatan, Departemen: not on paper */
 }

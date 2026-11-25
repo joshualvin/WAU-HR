@@ -234,6 +234,7 @@ function page_footer()
 </script>
 <?php endif; ?>
 <script src="assets/time24.js?v=<?= (int)@filemtime(__DIR__ . '/../assets/time24.js') ?>"></script>
+<script src="assets/printfit.js?v=<?= (int)@filemtime(__DIR__ . '/../assets/printfit.js') ?>"></script>
 </body>
 </html>
 <?php
