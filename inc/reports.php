@@ -203,7 +203,11 @@ switch ($tab) {
 
     case 'rekap':
         $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal (jam)', 'Terlambat (x)', 'Terlambat (jam)', 'Pulang awal (x)', 'Pulang awal (jam)',
-                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Masuk di hari libur', 'Dinas luar (hari)', 'Total durasi'];
+                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Masuk di hari libur', 'Dinas luar (hari)', 'Dinas luar (tanggal)', 'Driver (hari)', 'Kirim sendiri (trip)', 'Insentif antar', 'Total durasi'];
+        require_once __DIR__ . '/payroll.php';
+        ensure_payroll_tables();
+        $rps = payroll_settings();
+        $tripOf = q('SELECT pegawai_id, trip_driver, trip_alone FROM web_bonus WHERE period_to = ?', [$to])->fetchAll(PDO::FETCH_UNIQUE);   // Rekap gudang of the period ending on "s/d"
         require_once __DIR__ . '/dl.php';
         ensure_dl_tables();
         $dlMarked = dl_days($from, $to);
@@ -226,11 +230,15 @@ switch ($tab) {
             unset($s);
         }
         foreach ($sum as $pin => $s) {
+            $tr = isset($info[$pin], $tripOf[$info[$pin]['pegawai_id']]) ? $tripOf[$info[$pin]['pegawai_id']] : null;
             $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
                        $s['ot'] ?: '', $s['otM'] ? fmt_minutes($s['otM']) : '',
                        $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', $s['offWork'] ?: '',
-                       isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '', fmt_minutes($s['min'])];
+                       isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '',
+                       isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? dl_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',
+                       $tr ? ((int)$tr['trip_driver'] ?: '') : '', $tr ? ((int)$tr['trip_alone'] ?: '') : '',
+                       $tr && ($tr['trip_driver'] || $tr['trip_alone']) ? rupiah($tr['trip_driver'] * $rps['trip_driver'] + $tr['trip_alone'] * $rps['trip_alone']) : '', fmt_minutes($s['min'])];
         }
         break;
 
