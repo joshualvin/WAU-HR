@@ -643,11 +643,13 @@ function daily_attendance($from, $to, $pegawaiId = null)
     $types = leave_types();
     $in2 = implode(',', array_fill(0, count($ids), '?'));
     $cats = leave_categories();
-    $st = q("SELECT pegawai_id, izin_tgl, izin_jenis_id, kat_izin_id FROM izin
+    $normatif = q('SELECT cuti_n_id, cuti_n_nama FROM cuti_normatif')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $st = q("SELECT pegawai_id, izin_tgl, izin_jenis_id, kat_izin_id, cuti_n_id FROM izin
              WHERE izin_status = 1 AND izin_jenis_id NOT BETWEEN 100 AND 105 AND izin_tgl BETWEEN ? AND ? AND pegawai_id IN ($in2)",
         array_merge([$from, $to], $ids));
     foreach ($st as $r) {
         $label = isset($types[$r['izin_jenis_id']]) ? $types[$r['izin_jenis_id']] : ('Type ' . $r['izin_jenis_id']);
+        if ((int)$r['izin_jenis_id'] === 80 && !empty($normatif[$r['cuti_n_id']])) $label = $normatif[$r['cuti_n_id']];   // e.g. Cuti Keluarga Meninggal
         // the reason chosen as Kategori (e.g. Kedukaan) is part of the label; approval notes ("Disetujui ...") are not
         $cat = isset($cats[$r['kat_izin_id']]) ? $cats[$r['kat_izin_id']] : '';
         if ($cat !== '' && stripos($cat, 'disetujui') === false && stripos($label, $cat) === false) $label .= ' - ' . $cat;
