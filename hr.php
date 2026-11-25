@@ -279,9 +279,9 @@ if ($m === 'home'):
       <div class="card widget"><div class="wbody"><h2>Gudang hari ini</h2>
         <?php if ($sun): ?><div style="font-size:22px;font-weight:600;color:var(--muted)">Libur</div>
         <?php elseif ($gst['open']): ?><div style="font-size:32px;font-weight:600;color:var(--ok)">Buka <?= h($gst['open']) ?></div>
-          <div class="muted"><?= $gst['close'] ? 'Tutup ' . h($gst['close']) . ' · ' : '' ?>scan Kabag gudang di <?= h(implode(', ', array_keys($gs['days'][$today]['m']))) ?></div>
+          <div class="muted"><?= $gst['close'] ? 'Tutup ' . h($gst['close']) . ' · ' : '' ?>dibuka <?= h($gs['days'][$today]['who']) ?> di <?= h(implode(', ', array_keys($gs['days'][$today]['m']))) ?></div>
         <?php else: ?><div style="font-size:26px;font-weight:600;color:<?= $gst['state'] === 'late' ? 'var(--bad)' : 'var(--muted)' ?>"><?= $gst['state'] === 'late' ? 'Belum buka' : 'Belum ada scan' ?></div>
-          <div class="muted">Belum ada scan Kabag gudang di mesin Margo<?= $gst['state'] === 'late' ? ' (lewat ' . h($expectOpen) . ')' : '' ?>.</div><?php endif; ?>
+          <div class="muted">Belum ada scan pembuka gudang (Kabag atau penggantinya) di mesin Margo<?= $gst['state'] === 'late' ? ' (lewat ' . h($expectOpen) . ')' : '' ?>.</div><?php endif; ?>
       </div><div class="wfoot"><a href="hr.php?m=report&tab=gudang">Lihat jam gudang ›</a></div></div>
       <?php $otPend = (int)q('SELECT COUNT(*) FROM web_overtime WHERE status = ?', [CLAIM_PENDING])->fetchColumn();
             $rbPend = (int)q('SELECT COUNT(*) FROM web_reimburse WHERE status = ?', [CLAIM_PENDING])->fetchColumn(); ?>

@@ -16,4 +16,8 @@ check('warehouse opened 08:20, scanned 08:32: 12 minutes late', late_minutes(8 *
 check('grace 0 counts every minute after opening', late_minutes(8 * 60 + 22, 8 * 60, 0, 8 * 60 + 20, 0), 2);
 check('warehouse opened 08:20, arrived 08:15: not late', late_minutes(8 * 60 + 15, 8 * 60, 0, 8 * 60 + 20), 0);
 check('warehouse opened early: normal start counts', late_minutes(8 * 60 + 10, 8 * 60, 0, 7 * 60 + 40), 10);
+$op = ['9001', '9008', '9005'];
+check('Heni scanned at Margo: she opened, even if a backup scanned earlier', gudang_pick(['9008' => ['07:40'], '9001' => ['08:05']], $op), '9001');
+check('Heni absent: the backup who scanned first opened', gudang_pick(['9005' => ['08:10'], '9008' => ['08:02', '16:00']], $op), '9008');
+check('nobody of them at Margo', gudang_pick(['1234' => ['08:00']], $op), null);
 echo "gudang_test: $ok checks passed\n";

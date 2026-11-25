@@ -1,25 +1,48 @@
 <?php
-// Warehouse (gudang) open / close time: the head of the warehouse (config 'gudang_opener_pin', default 9001) clocks in at the Margo
-// machines when the warehouse opens, so his first scan of the day is the opening time and a late scan is the closing time.
+// Warehouse (gudang) open / close time: the head of the warehouse clocks in at the Margo machines (inside the warehouse) when she opens it,
+// so her first scan of the day there is the opening time and a late scan the closing time. When she does not come, one of the backups
+// opens it: config 'gudang_openers' = PINs, the head first (default Heni 9001, then Andhy 9008 and Susi 9005).
+
+/** PINs that can open the warehouse, the head first. */
+function gudang_openers()
+{
+    global $CONFIG;
+    if (!empty($CONFIG['gudang_openers'])) return array_map('strval', (array)$CONFIG['gudang_openers']);
+    return isset($CONFIG['gudang_opener_pin']) ? [(string)$CONFIG['gudang_opener_pin']] : ['9001', '9008', '9005'];
+}
 
 function gudang_pin()
 {
-    global $CONFIG;
-    return isset($CONFIG['gudang_opener_pin']) ? (string)$CONFIG['gudang_opener_pin'] : '9001';
+    return gudang_openers()[0];
 }
 
-/** Scans of that person on the Margo machines per day: ['margo' => [sn => name], 'days' => [Y-m-d => ['t' => [HH:MM...], 'm' => [machine name => 1]]]]. */
+/** Who opened on a day: the head when she scanned at Margo, otherwise the backup who scanned there first. $byPin = [pin => [HH:MM, ...]]. */
+function gudang_pick($byPin, $openers)
+{
+    if (!empty($byPin[$openers[0]])) return $openers[0];
+    $best = null;
+    foreach (array_slice($openers, 1) as $p) if (!empty($byPin[$p]) && ($best === null || min($byPin[$p]) < min($byPin[$best]))) $best = $p;
+    return $best;
+}
+
+/** Scans of the opener of each day on the Margo machines: ['margo' => [sn => name], 'days' => [Y-m-d => ['t' => [HH:MM...], 'm' => [machine => 1], 'pin' => opener PIN, 'who' => name]]]. */
 function gudang_scans($from, $to)
 {
     $margo = q("SELECT sn, device_name FROM device WHERE device_name LIKE '%margo%'")->fetchAll(PDO::FETCH_KEY_PAIR);
-    $days = [];
+    $openers = gudang_openers();
+    $raw = [];
     if ($margo) {
         $in = implode(',', array_fill(0, count($margo), '?'));
-        foreach (q("SELECT scan_date, sn FROM att_log WHERE pin = ? AND sn IN ($in) AND scan_date >= ? AND scan_date < ? + INTERVAL 1 DAY ORDER BY scan_date", array_merge([gudang_pin()], array_keys($margo), [$from, $to])) as $r) {
-            $d = substr($r['scan_date'], 0, 10);
-            $days[$d]['t'][] = substr($r['scan_date'], 11, 5);
-            $days[$d]['m'][$margo[$r['sn']]] = 1;
-        }
+        $inP = implode(',', array_fill(0, count($openers), '?'));
+        foreach (q("SELECT pin, scan_date, sn FROM att_log WHERE pin IN ($inP) AND sn IN ($in) AND scan_date >= ? AND scan_date < ? + INTERVAL 1 DAY ORDER BY scan_date", array_merge($openers, array_keys($margo), [$from, $to])) as $r)
+            $raw[substr($r['scan_date'], 0, 10)][(string)$r['pin']][] = [substr($r['scan_date'], 11, 5), $margo[$r['sn']]];
+    }
+    $names = $raw ? q('SELECT pegawai_pin, pegawai_nama FROM pegawai WHERE pegawai_pin IN (' . implode(',', array_fill(0, count($openers), '?')) . ')', $openers)->fetchAll(PDO::FETCH_KEY_PAIR) : [];
+    $days = [];
+    foreach ($raw as $d => $byPin) {
+        $times = array_map(function ($l) { return array_column($l, 0); }, $byPin);
+        $pin = gudang_pick($times, $openers);
+        $days[$d] = ['t' => $times[$pin], 'm' => array_fill_keys(array_column($byPin[$pin], 1), 1), 'pin' => $pin, 'who' => isset($names[$pin]) ? $names[$pin] : $pin];
     }
     return ['margo' => $margo, 'days' => $days];
 }
@@ -51,12 +74,12 @@ function late_minutes($inM, $startM, $tolerance, $openM = null, $grace = 5)
     return $inM - $startM > (int)$tolerance ? $inM - $startM : 0;
 }
 
-/** [Y-m-d => opening minute] for the days in the range, and the ids of warehouse staff (department or office named gudang, not the opener). */
+/** [Y-m-d => ['m' => opening minute, 'pin' => who opened]] for the days in the range, and the ids of warehouse staff (department or office named gudang). */
 function gudang_open_minutes($from, $to)
 {
     $open = [];
-    foreach (gudang_scans($from, $to)['days'] as $d => $v) { $t = min($v['t']); $open[$d] = (int)substr($t, 0, 2) * 60 + (int)substr($t, 3, 2); }
+    foreach (gudang_scans($from, $to)['days'] as $d => $v) { $t = min($v['t']); $open[$d] = ['m' => (int)substr($t, 0, 2) * 60 + (int)substr($t, 3, 2), 'pin' => $v['pin']]; }
     $staff = q("SELECT p.pegawai_id FROM pegawai p LEFT JOIN pembagian2 d ON d.pembagian2_id = p.pembagian2_id LEFT JOIN pembagian3 k ON k.pembagian3_id = p.pembagian3_id
-                WHERE (d.pembagian2_nama LIKE '%gudang%' OR k.pembagian3_nama LIKE '%gudang%') AND p.pegawai_pin <> ?", [gudang_pin()])->fetchAll(PDO::FETCH_COLUMN);
+                WHERE d.pembagian2_nama LIKE '%gudang%' OR k.pembagian3_nama LIKE '%gudang%'")->fetchAll(PDO::FETCH_COLUMN);
     return [$open, array_fill_keys(array_map('intval', $staff), true)];
 }
