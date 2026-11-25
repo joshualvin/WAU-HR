@@ -43,10 +43,12 @@ function gudang_state($times, $now, $expect = '08:00')
  * Late minutes of a check-in. Warehouse staff cannot start before the warehouse is opened, so when it opened ($openM) after the
  * scheduled start their lateness is counted from the opening time instead. Minutes from midnight; null $openM = normal rule.
  */
-function late_minutes($inM, $startM, $tolerance, $openM = null)
+function late_minutes($inM, $startM, $tolerance, $openM = null, $grace = 5)
 {
-    $from = $openM !== null && $openM > $startM ? $openM : $startM;
-    return $inM - $from > (int)$tolerance ? $inM - $from : 0;
+    if ($openM !== null && $openM > $startM) {   // the machine is inside the warehouse: staff queue behind the opener, so a few minutes after opening is on time
+        return $inM - $openM > max((int)$tolerance, (int)$grace) ? $inM - $openM : 0;
+    }
+    return $inM - $startM > (int)$tolerance ? $inM - $startM : 0;
 }
 
 /** [Y-m-d => opening minute] for the days in the range, and the ids of warehouse staff (department or office named gudang, not the opener). */

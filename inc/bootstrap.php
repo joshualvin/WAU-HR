@@ -687,7 +687,7 @@ function daily_attendance($from, $to, $pegawaiId = null)
 
             $late = $early = 0;
             $minutes = null;
-            if ($jk && $inM !== null) $late = late_minutes($inM, $jk['start'], $jk['jk_tol_late'], isset($gStaff[(int)$e['pegawai_id']], $gOpen[$d]) ? $gOpen[$d] : null);
+            if ($jk && $inM !== null) $late = late_minutes($inM, $jk['start'], $jk['jk_tol_late'], isset($gStaff[(int)$e['pegawai_id']], $gOpen[$d]) ? $gOpen[$d] : null, isset($CONFIG['gudang_open_grace']) ? (int)$CONFIG['gudang_open_grace'] : 5);
             if ($jk && $outM !== null && $jk['end'] - $outM > (int)$jk['jk_tol_early']) $early = $jk['end'] - $outM;
             if ($inM !== null && $outM !== null) {
                 if ($jk && (int)$jk['jk_durasi'] !== 2) $minutes = ($early ? $outM : $jk['end']) - ($late ? $inM : $jk['start']);
