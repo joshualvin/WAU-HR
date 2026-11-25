@@ -484,7 +484,7 @@ function work_hours()
     static $all = null;
     if ($all === null) {
         $all = [];
-        foreach (q('SELECT * FROM jam_kerja ORDER BY jk_id') as $r) {
+        foreach (q("SELECT * FROM jam_kerja ORDER BY jk_name LIKE '%gudang%', jk_kode LIKE 'S0%', jk_kode, jk_id") as $r) {   // office first (weekdays, then Saturday), then gudang
             $start = hm_to_min($r['jk_bcin']) + (int)$r['jk_cin'];
             $outClose = hm_to_min($r['jk_ecout']);
             $end = $outClose - (int)$r['jk_cout'];
