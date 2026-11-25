@@ -720,6 +720,7 @@ function daily_attendance($from, $to, $pegawaiId = null)
                 'first' => $inM !== null ? min_to_hm($inM) : (($outM === null && $mins) ? min_to_hm($mins[0]) : null),
                 'last' => $outM !== null ? min_to_hm($outM) : null,
                 'late' => $late, 'early' => $early, 'ot' => $ot, 'minutes' => $minutes,
+                'early_in' => $jk && $inM !== null && $inM < $jk['start'] ? $jk['start'] - $inM : 0,   // arrived before the scheduled start (lembur only for early_ot_pins)
                 'scans' => count($mins), 'manual' => $manual,
                 'leave' => $lv, 'off' => $off, 'status' => $status, 'missing' => $missing,
             ];

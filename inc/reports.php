@@ -189,18 +189,18 @@ switch ($tab) {
     case 'harian':
     case 'scan1x':
     case 'luar':
-        $headers = ['Tanggal', 'PIN', 'Nama', 'Jabatan', 'Departemen', 'Jam kerja', 'Masuk', 'Pulang', 'Terlambat', 'Pulang awal', 'Lembur', 'Durasi', 'Scan', 'Status', 'Keterangan'];
+        $headers = ['Tanggal', 'PIN', 'Nama', 'Jabatan', 'Departemen', 'Jam kerja', 'Masuk', 'Pulang', 'Datang awal', 'Terlambat', 'Pulang awal', 'Lembur', 'Durasi', 'Scan', 'Status', 'Keterangan'];
         foreach ($daily() as $r) {
             if ($tab === 'scan1x' && $r['status'] !== 'incomplete') continue;
             if ($tab === 'luar' && !($r['off'] && $r['scans'])) continue;
             $data[] = [fmt_date($r['date']), $r['pin'], $r['name'], $emp($r['pin'], 'jab'), $emp($r['pin'], 'dep'), $r['jk'] ?: ($r['off'] ? 'Libur' : ''),
-                       $r['first'], $r['last'], $r['late'] ? fmt_minutes($r['late']) : '', $r['early'] ? fmt_minutes($r['early']) : '',
+                       $r['first'], $r['last'], !empty($r['early_in']) ? fmt_minutes($r['early_in']) : '', $r['late'] ? fmt_minutes($r['late']) : '', $r['early'] ? fmt_minutes($r['early']) : '',
                        $r['ot'] ? fmt_minutes($r['ot']) : '', fmt_minutes($r['minutes']), $r['scans'] ?: '', ['status' => $r['status']], $note($r)];
         }
         break;
 
     case 'rekap':
-        $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Terlambat (x)', 'Terlambat (jam)', 'Pulang awal (x)', 'Pulang awal (jam)',
+        $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal (jam)', 'Terlambat (x)', 'Terlambat (jam)', 'Pulang awal (x)', 'Pulang awal (jam)',
                     'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Masuk di hari libur', 'Dinas luar (hari)', 'Total durasi'];
         require_once __DIR__ . '/dl.php';
         ensure_dl_tables();
@@ -208,7 +208,7 @@ switch ($tab) {
         $sum = [];
         foreach ($daily() as $r) {
             $k = $r['pin'];
-            if (!isset($sum[$k])) $sum[$k] = ['work' => 0, 'ok' => 0, 'late' => 0, 'lateM' => 0, 'early' => 0, 'earlyM' => 0, 'incomplete' => 0, 'absent' => 0, 'leave' => 0, 'offWork' => 0, 'min' => 0, 'ot' => 0, 'otM' => 0];
+            if (!isset($sum[$k])) $sum[$k] = ['work' => 0, 'ok' => 0, 'late' => 0, 'lateM' => 0, 'early' => 0, 'earlyM' => 0, 'incomplete' => 0, 'absent' => 0, 'leave' => 0, 'offWork' => 0, 'min' => 0, 'ot' => 0, 'otM' => 0, 'earlyIn' => 0];
             $s = &$sum[$k];
             if (!$r['off']) $s['work']++;
             if ($r['off'] && $r['scans']) $s['offWork']++;
@@ -220,10 +220,11 @@ switch ($tab) {
             if ($r['early']) { $s['early']++; $s['earlyM'] += $r['early']; }
             if ($r['ot']) { $s['ot']++; $s['otM'] += $r['ot']; }
             $s['min'] += (int)$r['minutes'];
+            $s['earlyIn'] += isset($r['early_in']) ? (int)$r['early_in'] : 0;
             unset($s);
         }
         foreach ($sum as $pin => $s) {
-            $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'],
+            $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
                        $s['ot'] ?: '', $s['otM'] ? fmt_minutes($s['otM']) : '',
                        $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', $s['offWork'] ?: '',
