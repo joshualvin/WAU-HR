@@ -766,7 +766,8 @@ elseif ($m === 'reports'):
             'tahunan' => ['Rekap tahunan', 'Hadir, terlambat, tidak hadir dan cuti per bulan dalam satu tahun.'],
             'gudang' => ['Jam gudang', 'Jam gudang buka dan tutup per hari, dari scan pertama dan terakhir Kabag gudang di mesin Margo.'],
             'dl' => ['Dinas luar', 'Hari dinas luar per karyawan dengan rentang tanggalnya.'],
-            'antar' => ['Antar barang', 'Hari menyetir (driver) dan trip kirim sendiri (1 kernet) per karyawan dari trip di WAU ERP, dengan insentifnya.'],
+            'antar' => ['Antar barang & bensin', 'Hari driver, trip kirim sendiri dan perjalanan kantor–gudang per karyawan dengan insentif dan bensinnya (dari Rekap gudang).'],
+            'awal' => ['Datang awal', 'Siapa datang sebelum jam masuk, berapa lama, dan apakah dibayar sebagai lembur.'],
         ],
         'Cuti & Izin' => [
             'izin' => ['Cuti & izin', 'Semua cuti dan izin dalam periode, dengan status persetujuan.'],
@@ -790,7 +791,7 @@ elseif ($m === 'reports'):
 // ======================================================================= Laporan (one report)
 elseif ($m === 'report'):
     $titles = ['rekap' => 'Ringkasan kehadiran', 'harian' => 'Detail kehadiran', 'kartushift' => 'Kartu shift', 'scanlog' => 'Log kehadiran', 'terlambat' => 'Keterlambatan',
-               'pulang' => 'Pulang awal', 'lembur' => 'Lembur', 'scan1x' => 'Scan tidak lengkap', 'luar' => 'Masuk di hari libur', 'tahunan' => 'Rekap tahunan', 'gudang' => 'Jam gudang', 'dl' => 'Dinas luar', 'antar' => 'Antar barang',
+               'pulang' => 'Pulang awal', 'lembur' => 'Lembur', 'scan1x' => 'Scan tidak lengkap', 'luar' => 'Masuk di hari libur', 'tahunan' => 'Rekap tahunan', 'gudang' => 'Jam gudang', 'dl' => 'Dinas luar', 'antar' => 'Antar barang & bensin', 'awal' => 'Datang awal',
                'izin' => 'Cuti & izin', 'saldo' => 'Saldo cuti', 'cutin' => 'Cuti normatif', 'cutip' => 'Cuti pribadi', 'karyawan' => 'Data karyawan', 'kartu' => 'Kartu scanlog'];
     $q = ['m' => 'report', 'tab' => $tab, 'from' => $from, 'to' => $to, 'pegawai_id' => $pid, 'dept' => $dept, 'sort' => $sort, 'jenis' => $jenis, 'min' => $minDur, 'year' => $year];
     $perPage = 200;

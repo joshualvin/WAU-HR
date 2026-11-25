@@ -11,7 +11,8 @@ $tabs = [
     'rekap'     => 'Rekap Periode',
     'dl'        => 'Dinas Luar',
     'gudang'    => 'Jam Gudang',
-    'antar'     => 'Antar Barang',
+    'antar'     => 'Antar Barang & Bensin',
+    'awal'      => 'Datang Awal',
     'cutin'     => 'Cuti Normatif',
     'cutip'     => 'Cuti Pribadi',
     'terlambat' => 'Datang Terlambat',
@@ -257,36 +258,47 @@ switch ($tab) {
                   [['Hari dengan scan', count($days)], ['Rata-rata gudang buka', $avg($openMin)], ['Rata-rata gudang tutup', $avg($closeMin)], ['Senin-Sabtu tanpa pembuka scan di Margo', $work]]]];
         break;
 
-    case 'antar':   // driver days (Rp per day) and kirim sendiri trips as the only kernet (Rp per trip), from the trips in WAU ERP
-        require_once __DIR__ . '/erp.php';
+    case 'antar':   // driver days, kirim sendiri trips and office-warehouse trips entered on Penggajian > Rekap gudang for the period ending on "s/d"
         require_once __DIR__ . '/payroll.php';
-        require_once __DIR__ . '/dl.php';
+        ensure_payroll_tables();
         $ps = payroll_settings();
-        $headers = ['PIN', 'Nama', 'Kode ERP', 'Hari driver', 'Tanggal driver', 'Insentif driver', 'Kirim sendiri (trip)', 'Tanggal kirim sendiri', 'Insentif kirim sendiri', 'Total'];
-        list($trips, $erpNames, $tripErr) = erp_enabled() ? erp_trip_list($from, $to) : [[], [], 'WAU ERP belum terhubung (erp_token di config.php).'];
-        $people = trip_people($trips);
-        $codeOf = q('SELECT pegawai_id, code FROM web_driver_code')->fetchAll(PDO::FETCH_KEY_PAIR);
-        $byCode = [];
-        foreach ($byId as $id => $r) if (isset($codeOf[$id])) $byCode[strtoupper($codeOf[$id])] = $r;
-        foreach ($erpNames as $c => $n) {   // no code set: the same first name
-            if (isset($byCode[$c])) continue;
-            $first = mb_strtolower(strtok(trim($n), ' '));
-            foreach ($byId as $id => $r) if (!isset($codeOf[$id]) && mb_strtolower(strtok(trim($r['pegawai_nama']), ' ')) === $first) { $byCode[$c] = $r; break; }
-        }
-        $missing = [];
-        foreach ($people as $c => $x) {
-            $r = isset($byCode[$c]) ? $byCode[$c] : null;
-            if (!$r) { $missing[] = [$c, isset($erpNames[$c]) ? $erpNames[$c] : '', count($x['drive']), count($x['alone'])]; continue; }
+        $routes = fuel_routes();
+        $headers = array_merge(['PIN', 'Nama', 'Departemen', 'Driver (hari)', 'Insentif driver', 'Kirim sendiri (trip)', 'Insentif kirim sendiri'], array_map(function ($d) { return "Kantor-$d (PP)"; }, array_keys($routes)), ['Km', 'Bensin', 'Total']);
+        $trip = q('SELECT pegawai_id, trip_driver, trip_alone FROM web_bonus WHERE period_to = ?', [$to])->fetchAll(PDO::FETCH_UNIQUE);
+        $fuel = [];
+        foreach (q('SELECT pegawai_id, dest, trips FROM web_fuel WHERE period_to = ?', [$to]) as $r) $fuel[$r['pegawai_id']][$r['dest']] = (int)$r['trips'];
+        $sum = array_fill(0, count($headers), 0);
+        foreach ($byId as $id => $r) {
+            $t = isset($trip[$id]) ? $trip[$id] : ['trip_driver' => 0, 'trip_alone' => 0];
+            $f = isset($fuel[$id]) ? $fuel[$id] : [];
+            if (!$t['trip_driver'] && !$t['trip_alone'] && !$f) continue;
             if (!$wanted($r['pegawai_pin'])) continue;
-            $dv = count($x['drive']) * $ps['trip_driver'];
-            $al = count($x['alone']) * $ps['trip_alone'];
-            $data[] = [$r['pegawai_pin'], $r['pegawai_nama'], $c, count($x['drive']) ?: '', dl_ranges($x['drive']), $dv ? rupiah($dv) : '',
-                       count($x['alone']) ?: '', implode(', ', array_map(function ($d) { return date('d-m', strtotime($d)); }, $x['alone'])), $al ? rupiah($al) : '', rupiah($dv + $al)];
+            list($km, $rp) = fuel_amount($f, $routes, $ps['fuel_per_km']);
+            $dv = $t['trip_driver'] * $ps['trip_driver'];
+            $al = $t['trip_alone'] * $ps['trip_alone'];
+            $row = [$r['pegawai_pin'], $r['pegawai_nama'], $r['dep'], (int)$t['trip_driver'] ?: '', $dv ? rupiah($dv) : '', (int)$t['trip_alone'] ?: '', $al ? rupiah($al) : ''];
+            foreach (array_keys($routes) as $d) $row[] = isset($f[$d]) ? $f[$d] : '';
+            $data[] = array_merge($row, [$km ?: '', $rp ? rupiah($rp) : '', rupiah($dv + $al + $rp)]);
         }
-        usort($data, function ($a, $b) { return strcmp($a[1], $b[1]); });
-        $side = [['Keterangan', ['Hal', 'Nilai'], array_merge([['Trip di WAU ERP', count($trips)], ['Tarif driver per hari', rupiah($ps['trip_driver'])], ['Tarif kirim sendiri per trip', rupiah($ps['trip_alone'])]],
-                  $tripErr ? [['Kendala', $tripErr]] : [])]];
-        if ($missing) $side[] = ['Kode ERP tanpa karyawan (isi Kode driver ERP di Bonus penjualan)', ['Kode', 'Nama di ERP', 'Hari driver', 'Kirim sendiri'], $missing];
+        usort($data, function ($x, $y) { return strcmp($x[1], $y[1]); });
+        $side = [['Keterangan', ['Hal', 'Nilai'], [['Periode gaji sampai', fmt_date($to)], ['Sumber', 'Penggajian › Rekap gudang (driver & bensin)'],
+                  ['Tarif', 'Driver ' . rupiah($ps['trip_driver']) . '/hari, kirim sendiri ' . rupiah($ps['trip_alone']) . '/trip, bensin ' . rupiah($ps['fuel_per_km']) . '/km'],
+                  ['Jarak', implode(', ', array_map(function ($d, $k) { return "$d $k km"; }, array_keys($routes), $routes))]]]];
+        break;
+
+    case 'awal':   // arrived before the scheduled start; paid as lembur only for early_ot_pins (Heni, Yanuar)
+        global $CONFIG;
+        $paid = array_fill_keys(array_map('strval', isset($CONFIG['early_ot_pins']) ? (array)$CONFIG['early_ot_pins'] : ['9001', '9006']), true);
+        $headers = ['Tanggal', 'PIN', 'Nama', 'Departemen', 'Jam kerja', 'Masuk', 'Datang awal', 'Dibayar lembur'];
+        $tot = [];
+        foreach ($daily() as $r) {
+            if (empty($r['early_in'])) continue;
+            $data[] = [fmt_date($r['date']), $r['pin'], $r['name'], $emp($r['pin'], 'dep'), $r['jk'], $r['first'], fmt_minutes($r['early_in']), isset($paid[(string)$r['pin']]) ? 'Ya' : ''];
+            if (!isset($tot[$r['pin']])) $tot[$r['pin']] = [$r['pin'], $r['name'], 0, 0];
+            $tot[$r['pin']][2]++;
+            $tot[$r['pin']][3] += $r['early_in'];
+        }
+        $side = [['Rekap per karyawan', ['PIN', 'Nama', 'Hari', 'Total datang awal'], array_map(function ($t) { return [$t[0], $t[1], $t[2], fmt_minutes($t[3])]; }, array_values($tot))]];
         break;
 
     case 'dl':
