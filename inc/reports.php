@@ -205,11 +205,13 @@ switch ($tab) {
 
     case 'rekap':
         $headers = ['PIN', 'NIP', 'Nama', 'Jabatan', 'Departemen', 'Hari kerja', 'Hadir', 'Datang awal (jam)', 'Terlambat (x)', 'Terlambat (jam)', 'Pulang awal (x)', 'Pulang awal (jam)',
-                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti (tanggal)', 'Masuk di hari libur', 'Dinas luar (hari)', 'Dinas luar (tanggal)', 'Driver (hari)', 'Kirim sendiri (trip)', 'Insentif antar', 'Total durasi'];
+                    'Lembur (x)', 'Lembur (jam)', 'Scan 1x', 'Tidak hadir', 'Izin / cuti', 'Izin / cuti (tanggal)', 'Masuk di hari libur', 'Dinas luar (hari)', 'Dinas luar (tanggal)', 'Driver (hari)', 'Kirim sendiri (trip)', 'Insentif antar', 'Bensin (km)', 'Bensin (Rp)', 'Total durasi'];
         require_once __DIR__ . '/payroll.php';
         ensure_payroll_tables();
         $rps = payroll_settings();
-        $tripOf = q('SELECT pegawai_id, trip_driver, trip_alone FROM web_bonus WHERE period_to = ?', [$to])->fetchAll(PDO::FETCH_UNIQUE);   // Rekap gudang of the period ending on "s/d"
+        $tripOf = q('SELECT pegawai_id, trip_driver, trip_alone FROM web_bonus WHERE period_to = ?', [$to])->fetchAll(PDO::FETCH_UNIQUE);
+        $fuelOf = [];
+        foreach (q('SELECT pegawai_id, dest, trips FROM web_fuel WHERE period_to = ?', [$to]) as $fr) $fuelOf[$fr['pegawai_id']][$fr['dest']] = (int)$fr['trips'];   // Rekap gudang of the period ending on "s/d"
         require_once __DIR__ . '/dl.php';
         ensure_dl_tables();
         $dlMarked = dl_days($from, $to);
@@ -234,11 +236,13 @@ switch ($tab) {
         $names = [];
         foreach (array_keys($earlyPaid) as $ep) if (isset($info[$ep])) $names[] = $info[$ep]['pegawai_nama'];
         $side = [['Keterangan', ['Hal', 'Penjelasan'], [
-            ['Datang awal', 'Menit sebelum jam masuk jadwal. Untuk ' . implode(' dan ', $names ?: ['(tidak ada)']) . ' datang awal dihitung sebagai lembur (ditambahkan ke Lembur), karena harus ke kantor dulu sebelum ke gudang; untuk karyawan lain hanya dicatat.'],
+            ['Datang awal', 'Menit sebelum jam masuk jadwal. Untuk ' . implode(' dan ', $names ?: ['(tidak ada)']) . ' waktu ini sudah termasuk di kolom Lembur (dihitung sekali; kolom Datang awal hanya menunjukkan bagiannya), karena harus ke kantor dulu sebelum ke gudang; untuk karyawan lain hanya dicatat.'],
             ['Driver / kirim sendiri', 'Dari Penggajian › Rekap gudang untuk periode gaji yang berakhir pada tanggal "s/d": driver Rp' . number_format($rps['trip_driver'], 0, ',', '.') . '/hari, kirim sendiri (1 kernet) Rp' . number_format($rps['trip_alone'], 0, ',', '.') . '/trip.'],
+            ['Bensin', 'Perjalanan kantor–gudang pulang-pergi dari Rekap gudang × km × 2 × Rp' . number_format($rps['fuel_per_km'], 0, ',', '.') . '/km; dibayar sebagai reimbursement (tidak kena pajak).'],
             ['Terlambat gudang', 'Karyawan gudang dihitung terlambat dari jam gudang dibuka (scan pertama pembuka di mesin Margo) bila lebih lambat dari jam masuk, dengan toleransi antre.']]]];
         foreach ($sum as $pin => $s) {
             $tr = isset($info[$pin], $tripOf[$info[$pin]['pegawai_id']]) ? $tripOf[$info[$pin]['pegawai_id']] : null;
+            $fu = fuel_amount(isset($info[$pin], $fuelOf[$info[$pin]['pegawai_id']]) ? $fuelOf[$info[$pin]['pegawai_id']] : [], fuel_routes(), $rps['fuel_per_km']);   // bensin kantor-gudang (reimbursement)
             $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
                        $s['ot'] ?: '', $s['otM'] ? fmt_minutes($s['otM']) : '',
@@ -246,7 +250,8 @@ switch ($tab) {
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? dl_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        $tr ? ((int)$tr['trip_driver'] ?: '') : '', $tr ? ((int)$tr['trip_alone'] ?: '') : '',
-                       $tr && ($tr['trip_driver'] || $tr['trip_alone']) ? rupiah($tr['trip_driver'] * $rps['trip_driver'] + $tr['trip_alone'] * $rps['trip_alone']) : '', fmt_minutes($s['min'])];
+                       $tr && ($tr['trip_driver'] || $tr['trip_alone']) ? rupiah($tr['trip_driver'] * $rps['trip_driver'] + $tr['trip_alone'] * $rps['trip_alone']) : '',
+                       $fu[0] ?: '', $fu[1] ? rupiah($fu[1]) : '', fmt_minutes($s['min'])];
         }
         break;
 
