@@ -246,7 +246,7 @@ switch ($tab) {
             $data[] = [$pin, $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
                        $s['late'] ?: '', $s['lateM'] ? fmt_minutes($s['lateM']) : '', $s['early'] ?: '', $s['earlyM'] ? fmt_minutes($s['earlyM']) : '',
                        $s['ot'] ?: '', $s['otM'] - (isset($s['otE']) ? $s['otE'] : 0) ? fmt_minutes($s['otM'] - (isset($s['otE']) ? $s['otE'] : 0)) : '', !empty($s['otE']) ? fmt_minutes($s['otE']) : '', $s['otM'] ? fmt_minutes($s['otM']) : '',
-                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode('; ', array_map(function ($lt, $ds) { return preg_replace('/\\s*\\(.*\\)$/', '', $lt) . ' ' . short_ranges($ds); }, array_keys($s['leaveDays']), $s['leaveDays'])) : '', $s['offWork'] ?: '',
+                       $s['incomplete'] ?: '', $s['absent'] ?: '', $s['leave'] ?: '', isset($s['leaveDays']) ? implode('; ', array_map(function ($lt, $ds) { return preg_replace('/\\s*\\([^)]*\\)/', '', $lt) . ' ' . short_ranges($ds); }, array_keys($s['leaveDays']), $s['leaveDays'])) : '', $s['offWork'] ?: '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? count($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        isset($info[$pin], $dlMarked[$info[$pin]['pegawai_id']]) ? short_ranges($dlMarked[$info[$pin]['pegawai_id']]) : '',
                        $tr ? ((int)$tr['trip_driver'] ?: '') : '', $tr ? ((int)$tr['trip_alone'] ?: '') : '',
