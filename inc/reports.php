@@ -70,8 +70,10 @@ $daily = function () use ($from, $to, $pid, $wanted, $sort) {
     });
     return $rows;
 };
-$note = function ($r) {
-    return implode('; ', array_merge($r['leave'], $r['off'] ? [$r['off']] : [], $r['missing'] == 100 ? ['Tidak scan masuk'] : [], $r['missing'] == 101 ? ['Tidak scan pulang'] : []));
+$earlyPaid = array_fill_keys(array_map('strval', isset($GLOBALS['CONFIG']['early_ot_pins']) ? (array)$GLOBALS['CONFIG']['early_ot_pins'] : ['9001', '9006']), true);   // early arrival counts as lembur
+$note = function ($r) use ($earlyPaid) {
+    $early = !empty($r['early_in']) && isset($earlyPaid[(string)$r['pin']]) ? ['Datang awal ' . fmt_minutes($r['early_in']) . ' dihitung sebagai lembur'] : [];
+    return implode('; ', array_merge($r['leave'], $r['off'] ? [$r['off']] : [], $r['missing'] == 100 ? ['Tidak scan masuk'] : [], $r['missing'] == 101 ? ['Tidak scan pulang'] : [], $early));
 };
 
 $headers = [];
@@ -229,6 +231,12 @@ switch ($tab) {
             $s['earlyIn'] += isset($r['early_in']) ? (int)$r['early_in'] : 0;
             unset($s);
         }
+        $names = [];
+        foreach (array_keys($earlyPaid) as $ep) if (isset($info[$ep])) $names[] = $info[$ep]['pegawai_nama'];
+        $side = [['Keterangan', ['Hal', 'Penjelasan'], [
+            ['Datang awal', 'Menit sebelum jam masuk jadwal. Untuk ' . implode(' dan ', $names ?: ['(tidak ada)']) . ' datang awal dihitung sebagai lembur (ditambahkan ke Lembur), karena harus ke kantor dulu sebelum ke gudang; untuk karyawan lain hanya dicatat.'],
+            ['Driver / kirim sendiri', 'Dari Penggajian › Rekap gudang untuk periode gaji yang berakhir pada tanggal "s/d": driver Rp' . number_format($rps['trip_driver'], 0, ',', '.') . '/hari, kirim sendiri (1 kernet) Rp' . number_format($rps['trip_alone'], 0, ',', '.') . '/trip.'],
+            ['Terlambat gudang', 'Karyawan gudang dihitung terlambat dari jam gudang dibuka (scan pertama pembuka di mesin Margo) bila lebih lambat dari jam masuk, dengan toleransi antre.']]]];
         foreach ($sum as $pin => $s) {
             $tr = isset($info[$pin], $tripOf[$info[$pin]['pegawai_id']]) ? $tripOf[$info[$pin]['pegawai_id']] : null;
             $data[] = [$pin, $emp($pin, 'pegawai_nip'), $emp($pin, 'pegawai_nama'), $emp($pin, 'jab'), $emp($pin, 'dep'), $s['work'], $s['ok'], $s['earlyIn'] ? fmt_minutes($s['earlyIn']) : '',
