@@ -60,3 +60,39 @@ function erp_trips($from, $to)
     foreach ($json['drivers'] as $d) $out[strtoupper($d['code'])] = $d;
     return [$out, null];
 }
+
+/**
+ * The trips themselves (main system Shipment) for $from..$to: [[['date', 'driver' => code, 'helpers' => [codes]], ...], [code => name], error or null].
+ * Needs the WAU ERP version whose api/hr.php trips answer includes 'trips'.
+ */
+function erp_trip_list($from, $to)
+{
+    global $CONFIG;
+    $url = rtrim(!empty($CONFIG['erp_url']) ? $CONFIG['erp_url'] : 'http://127.0.0.1/wau-erp', '/') . '/api/hr.php?' . http_build_query(['action' => 'trips', 'from' => $from, 'to' => $to]);
+    $ch = curl_init($url);
+    $token = trim($CONFIG['erp_token']);
+    curl_setopt_array($ch, [CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token, 'X-HR-Token: ' . $token, 'Accept: application/json'],
+                            CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_TIMEOUT => 60]);
+    $res = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $json = json_decode((string)$res, true);
+    if ($res === false || $http !== 200 || !is_array($json)) return [[], [], 'Tidak bisa membaca trip dari WAU ERP (HTTP ' . $http . ').'];
+    if (!isset($json['trips'])) return [[], [], 'WAU ERP di server ini belum punya daftar trip per tanggal; perbarui WAU ERP.'];
+    return [$json['trips'], isset($json['names']) ? $json['names'] : [], null];
+}
+
+/**
+ * Per ERP code: dates driven as driver (one per day) and trips sent alone as the only kernet. $trips = erp_trip_list() rows.
+ * Returns [code => ['drive' => [Y-m-d...], 'alone' => [Y-m-d per trip...]]].
+ */
+function trip_people($trips)
+{
+    $out = [];
+    foreach ($trips as $t) {
+        if ($t['driver'] !== '') $out[$t['driver']]['drive'][$t['date']] = $t['date'];
+        if (count($t['helpers']) === 1) $out[$t['helpers'][0]]['alone'][] = $t['date'];
+    }
+    foreach ($out as &$x) { $x['drive'] = isset($x['drive']) ? array_values($x['drive']) : []; $x['alone'] = isset($x['alone']) ? $x['alone'] : []; }
+    return $out;
+}

@@ -11,6 +11,7 @@ $tabs = [
     'rekap'     => 'Rekap Periode',
     'dl'        => 'Dinas Luar',
     'gudang'    => 'Jam Gudang',
+    'antar'     => 'Antar Barang',
     'cutin'     => 'Cuti Normatif',
     'cutip'     => 'Cuti Pribadi',
     'terlambat' => 'Datang Terlambat',
@@ -254,6 +255,38 @@ switch ($tab) {
         for ($t = strtotime($from); $t <= strtotime($to) && $t <= time(); $t += 86400) if (date('N', $t) < 7 && !isset($days[date('Y-m-d', $t)])) $work++;
         $side = [['Ringkasan (pembuka PIN ' . implode(' / ', gudang_openers()) . ', mesin ' . ($margo ? implode(' / ', $margo) : 'Margo tidak ditemukan') . ')', ['Keterangan', 'Nilai'],
                   [['Hari dengan scan', count($days)], ['Rata-rata gudang buka', $avg($openMin)], ['Rata-rata gudang tutup', $avg($closeMin)], ['Senin-Sabtu tanpa pembuka scan di Margo', $work]]]];
+        break;
+
+    case 'antar':   // driver days (Rp per day) and kirim sendiri trips as the only kernet (Rp per trip), from the trips in WAU ERP
+        require_once __DIR__ . '/erp.php';
+        require_once __DIR__ . '/payroll.php';
+        require_once __DIR__ . '/dl.php';
+        $ps = payroll_settings();
+        $headers = ['PIN', 'Nama', 'Kode ERP', 'Hari driver', 'Tanggal driver', 'Insentif driver', 'Kirim sendiri (trip)', 'Tanggal kirim sendiri', 'Insentif kirim sendiri', 'Total'];
+        list($trips, $erpNames, $tripErr) = erp_enabled() ? erp_trip_list($from, $to) : [[], [], 'WAU ERP belum terhubung (erp_token di config.php).'];
+        $people = trip_people($trips);
+        $codeOf = q('SELECT pegawai_id, code FROM web_driver_code')->fetchAll(PDO::FETCH_KEY_PAIR);
+        $byCode = [];
+        foreach ($byId as $id => $r) if (isset($codeOf[$id])) $byCode[strtoupper($codeOf[$id])] = $r;
+        foreach ($erpNames as $c => $n) {   // no code set: the same first name
+            if (isset($byCode[$c])) continue;
+            $first = mb_strtolower(strtok(trim($n), ' '));
+            foreach ($byId as $id => $r) if (!isset($codeOf[$id]) && mb_strtolower(strtok(trim($r['pegawai_nama']), ' ')) === $first) { $byCode[$c] = $r; break; }
+        }
+        $missing = [];
+        foreach ($people as $c => $x) {
+            $r = isset($byCode[$c]) ? $byCode[$c] : null;
+            if (!$r) { $missing[] = [$c, isset($erpNames[$c]) ? $erpNames[$c] : '', count($x['drive']), count($x['alone'])]; continue; }
+            if (!$wanted($r['pegawai_pin'])) continue;
+            $dv = count($x['drive']) * $ps['trip_driver'];
+            $al = count($x['alone']) * $ps['trip_alone'];
+            $data[] = [$r['pegawai_pin'], $r['pegawai_nama'], $c, count($x['drive']) ?: '', dl_ranges($x['drive']), $dv ? rupiah($dv) : '',
+                       count($x['alone']) ?: '', implode(', ', array_map(function ($d) { return date('d-m', strtotime($d)); }, $x['alone'])), $al ? rupiah($al) : '', rupiah($dv + $al)];
+        }
+        usort($data, function ($a, $b) { return strcmp($a[1], $b[1]); });
+        $side = [['Keterangan', ['Hal', 'Nilai'], array_merge([['Trip di WAU ERP', count($trips)], ['Tarif driver per hari', rupiah($ps['trip_driver'])], ['Tarif kirim sendiri per trip', rupiah($ps['trip_alone'])]],
+                  $tripErr ? [['Kendala', $tripErr]] : [])]];
+        if ($missing) $side[] = ['Kode ERP tanpa karyawan (isi Kode driver ERP di Bonus penjualan)', ['Kode', 'Nama di ERP', 'Hari driver', 'Kirim sendiri'], $missing];
         break;
 
     case 'dl':
